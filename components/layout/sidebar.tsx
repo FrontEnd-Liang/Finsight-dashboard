@@ -48,7 +48,7 @@ export function Sidebar({
             FINSIGHT
           </h1>
           <p className="font-mono text-[9px] text-muted-foreground">
-            RESEARCH TERMINAL v1.0
+            研究终端 v1.0
           </p>
         </div>
       </div>
@@ -60,7 +60,7 @@ export function Sidebar({
           onClick={onNewSession}
         >
           <MessageSquarePlus className="h-4 w-4" />
-          New Research
+          新建研究
         </Button>
         <Button
           variant="outline"
@@ -69,7 +69,7 @@ export function Sidebar({
           disabled={isIngesting}
         >
           <Database className="h-4 w-4" />
-          {isIngesting ? "Ingesting…" : "Load Demo Corpus"}
+          {isIngesting ? "导入中…" : "加载演示语料库"}
         </Button>
       </div>
 
@@ -78,7 +78,7 @@ export function Sidebar({
       <div className="flex items-center gap-2 px-4 py-2">
         <BarChart3 className="h-3 w-3 text-terminal-amber" />
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          Session History
+          会话历史
         </span>
       </div>
 
@@ -86,7 +86,7 @@ export function Sidebar({
         <div className="space-y-1 pb-4">
           {sessions.length === 0 && (
             <p className="px-2 py-4 font-mono text-[10px] text-muted-foreground">
-              No sessions yet
+              暂无会话
             </p>
           )}
           {sessions.map((session) => (
@@ -108,14 +108,14 @@ export function Sidebar({
                   {session.title}
                 </p>
                 <p className="font-mono text-[9px] text-muted-foreground">
-                  {new Date(session.updatedAt).toLocaleString()}
+                  {new Date(session.updatedAt).toLocaleString("zh-CN")}
                 </p>
               </button>
               <button
                 type="button"
                 onClick={() => onDeleteSession(session.id)}
                 className="opacity-0 transition group-hover:opacity-100 text-muted-foreground hover:text-terminal-red"
-                aria-label="Delete session"
+                aria-label="删除会话"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -126,11 +126,11 @@ export function Sidebar({
 
       <div className="border-t border-terminal-border p-3">
         <div className="rounded border border-terminal-border bg-background/40 p-2 font-mono text-[9px] leading-relaxed text-muted-foreground">
-          <span className="text-terminal-green">LIVE</span> · NYSE delayed
+          <span className="text-terminal-green">实时</span> · 纽交所延时行情
           <br />
           RAG: financial_documents
           <br />
-          LLM: DeepSeek
+          大模型: DeepSeek
         </div>
       </div>
     </aside>

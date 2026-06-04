@@ -39,7 +39,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          {isUser ? "Analyst Query" : "Finsight Agent"}
+          {isUser ? "分析师提问" : "Finsight 智能体"}
           {message.isStreaming && (
             <span className="ml-2 inline-block h-3 w-1.5 animate-blink bg-terminal-green" />
           )}
@@ -56,7 +56,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 key={`${src.ticker}-${i}`}
                 className="rounded border border-terminal-border bg-terminal-panel px-2 py-0.5 font-mono text-[10px] text-terminal-green/80"
               >
-                {src.ticker ?? "DOC"} · {src.source ?? "source"} ·{" "}
+                {src.ticker ?? "文档"} · {src.source ?? "来源"} ·{" "}
                 {src.score?.toFixed(2)}
               </span>
             ))}

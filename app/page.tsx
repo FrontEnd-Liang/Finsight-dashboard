@@ -24,7 +24,7 @@ export default function HomePage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusLine, setStatusLine] = useState("READY");
+  const [statusLine, setStatusLine] = useState("就绪");
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -38,7 +38,7 @@ export default function HomePage() {
       const id = createSessionId();
       const initial: ChatSession = {
         id,
-        title: "New Research",
+        title: "新建研究",
         updatedAt: Date.now(),
       };
       setSessions([initial]);
@@ -60,7 +60,7 @@ export default function HomePage() {
     (sessionId: string, query: string) => {
       setSessions((prev) => {
         const next = prev.map((s) =>
-          s.id === sessionId && s.title === "New Research"
+          s.id === sessionId && s.title === "新建研究"
             ? { ...s, title: titleFromQuery(query), updatedAt: Date.now() }
             : s.id === sessionId
               ? { ...s, updatedAt: Date.now() }
@@ -77,7 +77,7 @@ export default function HomePage() {
     if (!activeSessionId || isStreaming) return;
 
     setError(null);
-    setStatusLine("RETRIEVING CONTEXT…");
+    setStatusLine("检索上下文…");
 
     const userMessage: Message = {
       id: `msg_${Date.now()}_user`,
@@ -101,7 +101,7 @@ export default function HomePage() {
     abortRef.current = new AbortController();
 
     try {
-      setStatusLine("STREAMING RESPONSE…");
+      setStatusLine("流式响应中…");
       let accumulated = "";
 
       for await (const event of streamChat(
@@ -131,22 +131,22 @@ export default function HomePage() {
                 : m
             )
           );
-          setStatusLine("READY");
+          setStatusLine("就绪");
         } else if (event.type === "error") {
           throw new Error(event.message);
         }
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      const message = err instanceof Error ? err.message : "Stream failed";
+      const message = err instanceof Error ? err.message : "流式传输失败";
       setError(message);
-      setStatusLine("ERROR");
+      setStatusLine("错误");
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
             ? {
                 ...m,
-                content: `**Error:** ${message}`,
+                content: `**错误：** ${message}`,
                 isStreaming: false,
               }
             : m
@@ -162,7 +162,7 @@ export default function HomePage() {
     const id = createSessionId();
     const session: ChatSession = {
       id,
-      title: "New Research",
+      title: "新建研究",
       updatedAt: Date.now(),
     };
     setSessions((prev) => {
@@ -173,7 +173,7 @@ export default function HomePage() {
     setActiveSessionId(id);
     setMessages([]);
     setError(null);
-    setStatusLine("READY");
+    setStatusLine("就绪");
   };
 
   const handleSelectSession = (id: string) => {
@@ -181,7 +181,7 @@ export default function HomePage() {
     setActiveSessionId(id);
     setMessages(loadMessages(id));
     setError(null);
-    setStatusLine("READY");
+    setStatusLine("就绪");
   };
 
   const handleDeleteSession = async (id: string) => {
@@ -199,7 +199,7 @@ export default function HomePage() {
           const newId = createSessionId();
           const fresh: ChatSession = {
             id: newId,
-            title: "New Research",
+            title: "新建研究",
             updatedAt: Date.now(),
           };
           saveSessions([fresh]);
@@ -217,14 +217,14 @@ export default function HomePage() {
   const handleIngestDemo = async () => {
     setIsIngesting(true);
     setError(null);
-    setStatusLine("INGESTING DEMO CORPUS…");
+    setStatusLine("导入演示语料库…");
     try {
       const result = await ingestDemoData();
-      setStatusLine(`INGESTED ${result.ingested_nodes} DOCUMENTS`);
+      setStatusLine(`已导入 ${result.ingested_nodes} 份文档`);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Ingest failed";
+      const message = err instanceof Error ? err.message : "导入失败";
       setError(message);
-      setStatusLine("INGEST ERROR");
+      setStatusLine("导入错误");
     } finally {
       setIsIngesting(false);
     }
@@ -247,10 +247,10 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <Activity className="h-4 w-4 text-terminal-green animate-pulse-slow" />
             <span className="font-mono text-xs text-terminal-green">
-              FINANCIAL RESEARCH AGENT
+              金融研究智能体
             </span>
             <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
-              · LlamaIndex RAG · Supabase pgvector
+              · LlamaIndex RAG · Supabase 向量库
             </span>
           </div>
           <div className="flex items-center gap-4 font-mono text-[10px]">
@@ -269,12 +269,11 @@ export default function HomePage() {
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
                 <h2 className="font-mono text-lg text-terminal-green">
-                  Welcome to Finsight Terminal
+                  欢迎使用 Finsight 终端
                 </h2>
                 <p className="mt-3 max-w-md text-sm text-muted-foreground">
-                  Load the demo corpus from the sidebar, then ask comparative
-                  equity or macro questions. Responses stream via SSE with
-                  retrieved filing context.
+                  请先从侧边栏加载演示语料库，随后可提问跨品种权益或宏观类问题。
+                  回答将通过 SSE 流式输出，并附带检索到的财报上下文。
                 </p>
               </div>
             )}

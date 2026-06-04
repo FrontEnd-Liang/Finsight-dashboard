@@ -12,16 +12,16 @@ interface ChatInputProps {
 }
 
 const SUGGESTIONS = [
-  "Compare AAPL vs MSFT revenue growth and margins",
-  "Summarize NVDA data center outlook from filings",
-  "What does the latest FOMC signal for rate cuts in 2025?",
-  "Build a markdown table of mega-cap tech KPIs",
+  "对比 AAPL 与 MSFT 营收增速及利润率",
+  "汇总 NVDA 数据中心业务前景（基于公告/财报）",
+  "最新 FOMC 对 2025 年降息路径释放何种信号？",
+  "生成超大盘科技 KPI 对比 Markdown 表格",
 ];
 
 export function ChatInput({
   onSend,
   disabled,
-  placeholder = "Ask about earnings, macro, or equity research…",
+  placeholder = "询问财报、宏观或个股研究…",
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -90,7 +90,7 @@ export function ChatInput({
         </Button>
       </div>
       <p className="mt-2 text-center font-mono text-[10px] text-muted-foreground/60">
-        SSE stream · RAG over Supabase pgvector · DeepSeek
+        SSE 流式 · Supabase 向量检索 · DeepSeek
       </p>
     </div>
   );

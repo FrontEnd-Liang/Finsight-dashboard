@@ -13,9 +13,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Finsight | Financial Research AI Terminal",
+  title: "Finsight | 金融研究 AI 终端",
   description:
-    "RAG-powered financial research agent with DeepSeek, LlamaIndex, and Supabase pgvector",
+    "基于 DeepSeek、LlamaIndex 与 Supabase 向量库的 RAG 金融研究智能体",
 };
 
 export default function RootLayout({
@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="zh-CN" className="dark">
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans min-h-screen`}
       >
