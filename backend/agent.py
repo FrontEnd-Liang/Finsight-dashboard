@@ -356,7 +356,7 @@ class FinancialResearchAgent:
             sample = "、".join(equities[:4])
             pool.append(f"生成 {sample} 等标的 KPI 对比 Markdown 表格")
         if "JPM" in equities:
-            pool.append("分析 JPM Q4 净利息收入与 ROTCE 变化及信用成本")
+            pool.append("分析 JPM Q1 2026 净利息收入与 ROTCE 变化及信用成本")
 
         seen: set[str] = set()
         unique: list[str] = []

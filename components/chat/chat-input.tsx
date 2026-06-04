@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, RefreshCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchSuggestions } from "@/lib/api";
+import { DEFAULT_SUGGESTIONS } from "@/lib/default-suggestions";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
@@ -18,18 +19,13 @@ interface ChatInputProps {
   refreshKey?: number;
 }
 
-const SUGGESTIONS_CACHE_PREFIX = "finsight_suggestions_";
+const SUGGESTIONS_CACHE_PREFIX = "finsight_suggestions_v2_";
 
 function suggestionsCacheKey(sessionId: string, refreshKey: number) {
   return `${SUGGESTIONS_CACHE_PREFIX}${sessionId}_${refreshKey}`;
 }
 
-const FALLBACK_SUGGESTIONS = [
-  "对比 AAPL 与 MSFT 营收增速及利润率",
-  "汇总 NVDA 数据中心业务前景（基于公告/财报）",
-  "最新 FOMC 对 2025 年降息路径释放何种信号？",
-  "生成超大盘科技 KPI 对比 Markdown 表格",
-];
+const FALLBACK_SUGGESTIONS = [...DEFAULT_SUGGESTIONS];
 
 export function ChatInput({
   onSend,
