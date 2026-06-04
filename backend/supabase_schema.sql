@@ -48,6 +48,7 @@ BEGIN
 END;
 $$;
 
+-- User feedback on answers: run backend/supabase_feedback.sql
 -- Initial documents are loaded via /api/ingest from backend/data/corpus.json
 -- INSERT INTO financial_documents (content, metadata) VALUES
 -- ('Apple Inc. reported Q4 revenue of $94.9B...', '{"ticker": "AAPL", "sector": "Technology", "source": "10-K"}');

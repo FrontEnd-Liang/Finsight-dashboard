@@ -140,6 +140,45 @@ export async function ingestLibraryData(
   return response.json();
 }
 
+export interface FeedbackPayload {
+  session_id: string;
+  message_id: string;
+  feedback: "up" | "down";
+  user_query: string;
+  assistant_content: string;
+  thinking?: string;
+  sources?: SourceRef[];
+}
+
+export async function submitFeedback(
+  payload: FeedbackPayload
+): Promise<{ status: string; queued_for_refinement?: boolean }> {
+  const response = await fetch(`${API_BASE}/api/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Failed to submit feedback");
+  }
+  return response.json();
+}
+
+export async function clearFeedback(
+  sessionId: string,
+  messageId: string
+): Promise<void> {
+  const response = await fetch(
+    `${API_BASE}/api/feedback/${encodeURIComponent(sessionId)}/${encodeURIComponent(messageId)}`,
+    { method: "DELETE" }
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Failed to clear feedback");
+  }
+}
+
 export async function resetSession(sessionId: string): Promise<void> {
   await fetch(`${API_BASE}/api/reset`, {
     method: "POST",

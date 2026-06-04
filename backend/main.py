@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +12,7 @@ from agent import FinancialResearchAgent
 from corpus import get_library_documents
 from config import get_settings
 from database import create_supabase_client, ensure_vector_store_ready
+from feedback_db import upsert_feedback
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("finsight")
@@ -66,6 +67,16 @@ class IngestRequest(BaseModel):
 
 class ResetRequest(BaseModel):
     session_id: str = "default"
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str = Field(..., max_length=128)
+    message_id: str = Field(..., max_length=128)
+    feedback: Literal["up", "down"]
+    user_query: str = Field(..., min_length=1, max_length=8000)
+    assistant_content: str = Field(default="", max_length=50000)
+    thinking: str = Field(default="", max_length=50000)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SuggestionsRequest(BaseModel):
@@ -189,6 +200,51 @@ async def suggestions_post(request: SuggestionsRequest):
         }
     except Exception as exc:
         logger.exception("Suggestions error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/feedback")
+async def submit_feedback(request: FeedbackRequest):
+    settings = get_settings()
+    client = create_supabase_client(settings)
+    try:
+        row = await asyncio.to_thread(
+            upsert_feedback,
+            client,
+            session_id=request.session_id,
+            message_id=request.message_id,
+            feedback=request.feedback,
+            user_query=request.user_query.strip(),
+            assistant_content=request.assistant_content,
+            thinking=request.thinking,
+            sources=request.sources,
+        )
+        queued = request.feedback == "down"
+        return {
+            "status": "ok",
+            "feedback_id": row.get("id"),
+            "queued_for_refinement": queued,
+        }
+    except Exception as exc:
+        logger.exception("Feedback submit error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/feedback/{session_id}/{message_id}")
+async def clear_feedback(session_id: str, message_id: str):
+    settings = get_settings()
+    client = create_supabase_client(settings)
+    try:
+        await asyncio.to_thread(
+            lambda: client.table("message_feedback")
+            .delete()
+            .eq("session_id", session_id)
+            .eq("message_id", message_id)
+            .execute()
+        )
+        return {"status": "ok"}
+    except Exception as exc:
+        logger.exception("Feedback clear error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

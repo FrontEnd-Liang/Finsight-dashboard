@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1024
 
+    # Corpus refinement (must NOT be DeepSeek — use SiliconFlow Qwen, etc.)
+    refinement_api_key: str | None = None
+    refinement_base_url: str | None = None
+    refinement_model: str = "Qwen/Qwen2.5-72B-Instruct"
+
     cors_origins: str = "http://localhost:3000"
 
     @property

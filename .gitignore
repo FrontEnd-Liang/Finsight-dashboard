@@ -26,3 +26,4 @@ yarn-debug.log*
 *.pyc
 .pytest_cache/
 .venv/
+backend/data/backups/*.json

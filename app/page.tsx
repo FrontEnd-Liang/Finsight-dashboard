@@ -12,9 +12,11 @@ import { Sidebar, type ChatSession } from "@/components/layout/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchCorpusStatus,
+  clearFeedback,
   ingestLibraryData,
   resetSession,
   streamChat,
+  submitFeedback,
   type CorpusStatus,
 } from "@/lib/api";
 import {
@@ -233,7 +235,7 @@ export default function HomePage() {
   }, []);
 
   const handleMessageFeedback = useCallback(
-    (messageId: string, feedback: MessageFeedback | null) => {
+    async (messageId: string, feedback: MessageFeedback | null) => {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === messageId
@@ -241,8 +243,49 @@ export default function HomePage() {
             : m
         )
       );
+
+      if (!activeSessionId) return;
+
+      const idx = messages.findIndex((m) => m.id === messageId);
+      const assistant = messages[idx];
+      if (!assistant || assistant.role !== "assistant") return;
+
+      const userMsg = idx > 0 ? messages[idx - 1] : null;
+      const userQuery =
+        userMsg?.role === "user" ? userMsg.content : "（未找到对应提问）";
+
+      try {
+        if (feedback === "down") {
+          await submitFeedback({
+            session_id: activeSessionId,
+            message_id: messageId,
+            feedback: "down",
+            user_query: userQuery,
+            assistant_content: assistant.content,
+            thinking: assistant.thinking,
+            sources: assistant.sources,
+          });
+          setStatusLine("已记录反馈，将用于优化资料库");
+        } else if (feedback === "up") {
+          await submitFeedback({
+            session_id: activeSessionId,
+            message_id: messageId,
+            feedback: "up",
+            user_query: userQuery,
+            assistant_content: assistant.content,
+            thinking: assistant.thinking,
+            sources: assistant.sources,
+          });
+        } else {
+          await clearFeedback(activeSessionId, messageId);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "反馈提交失败";
+        setError(message);
+      }
     },
-    []
+    [activeSessionId, messages]
   );
 
   const handleNewSession = () => {

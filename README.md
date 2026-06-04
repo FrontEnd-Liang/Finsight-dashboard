@@ -14,6 +14,7 @@
 | **资料库管理** | 从 `corpus.json` 同步至向量索引，支持清空后全量重导 |
 | **智能推荐问** | 根据资料库覆盖标的生成快捷提问（会话级缓存，可手动刷新） |
 | **交互增强** | 流式输出、停止生成、多会话、回答点赞/点踩 |
+| **负反馈闭环** | 点踩写入 Supabase，定时脚本用独立模型修订 `corpus.json` 并可选重导向量库 |
 | **空检索兜底** | 无匹配上下文时，直连 LLM 给出中文说明（含日期、拒答预测类问题） |
 
 > **说明：** 回答基于已入库的研究资料库，不含实时行情推送；引用中会标明财报/公告所属期间。
@@ -110,6 +111,12 @@ backend/supabase_schema.sql
 
 将启用 `pgvector`、创建 `financial_documents` 表及 `match_financial_documents` RPC。
 
+再执行反馈表（点踩记录）：
+
+```
+backend/supabase_feedback.sql
+```
+
 ### 2. 后端
 
 ```powershell
@@ -151,6 +158,9 @@ npm run dev
 | `EMBEDDING_BASE_URL` | OpenAI 兼容 Embedding 基址 |
 | `EMBEDDING_MODEL` | 如 `BAAI/bge-m3` |
 | `EMBEDDING_DIMENSIONS` | 须与 `supabase_schema.sql` 中 vector 维度一致（默认 1024） |
+| `REFINEMENT_API_KEY` | 资料库修订模型 Key（默认可同 `EMBEDDING_API_KEY`） |
+| `REFINEMENT_BASE_URL` | 须为 SiliconFlow 等，**不可**用 DeepSeek |
+| `REFINEMENT_MODEL` | 如 `Qwen/Qwen2.5-72B-Instruct` |
 | `CORS_ORIGINS` | `http://localhost:3000` |
 
 **`.env.local`（前端）**
@@ -192,6 +202,8 @@ npm run dev
 | `POST` | `/api/suggestions` | 推荐提问（`recent_queries`, `count`） |
 | `GET` | `/api/corpus/status` | 向量库条数、资料清单元信息 |
 | `POST` | `/api/ingest` | 导入文档（`use_library`, `replace`, 或 `documents`） |
+| `POST` | `/api/feedback` | 提交点赞/点踩（点踩进入修订队列） |
+| `DELETE` | `/api/feedback/{session_id}/{message_id}` | 取消反馈记录 |
 | `POST` | `/api/reset` | 清除指定会话的服务端对话记忆 |
 
 ### `POST /api/ingest` 示例
@@ -249,6 +261,27 @@ RAG 只返回已入库披露片段；回答中会标注 FY/季度。若需更新
 ### 推荐问题每次发消息都刷新
 
 已改为 **按会话 + 资料版本缓存**；仅在进入页面、切换会话、同步资料库或点击刷新按钮时重新请求。
+
+## 点踩反馈与资料库自动修订
+
+1. 用户对回答点踩 → `POST /api/feedback` 写入 `message_feedback`（status=`pending`）。
+2. 定时任务运行修订脚本（使用 **REFINEMENT_*** 模型，与对话用 DeepSeek 分离）：
+
+```powershell
+cd backend
+.\venv\Scripts\activate
+python scripts/process_feedback.py --limit 10 --reingest
+```
+
+Windows 计划任务可执行 `backend/scripts/run_feedback_job.ps1`（建议每 6–12 小时）。
+
+| 参数 | 说明 |
+|------|------|
+| `--dry-run` | 只调用修订模型，不写 `corpus.json` |
+| `--reingest` | 补丁成功后自动同步向量库 |
+| `--limit N` | 单次最多处理 N 条点踩 |
+
+修订前会自动备份至 `backend/data/backups/`。处理完成后请在终端 **同步资料库** 或依赖 `--reingest`。
 
 ## 生产部署注意事项
 
