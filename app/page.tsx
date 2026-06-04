@@ -10,6 +10,7 @@ import {
 } from "@/components/chat/chat-message";
 import { Sidebar, type ChatSession } from "@/components/layout/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToastStack } from "@/components/ui/toast-stack";
 import {
   fetchCorpusStatus,
   clearFeedback,
@@ -19,6 +20,7 @@ import {
   submitFeedback,
   type CorpusStatus,
 } from "@/lib/api";
+import { stopSpeaking } from "@/lib/speech";
 import {
   createSessionId,
   deleteSessionCaches,
@@ -28,6 +30,7 @@ import {
   saveSessions,
   titleFromQuery,
 } from "@/lib/sessions";
+import { useToast } from "@/lib/use-toast";
 
 export default function HomePage() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -35,10 +38,15 @@ export default function HomePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("就绪");
   const [suggestionRefreshKey, setSuggestionRefreshKey] = useState(0);
   const [corpusStatus, setCorpusStatus] = useState<CorpusStatus | null>(null);
+  const { toasts, notify, dismiss } = useToast();
   const abortRef = useRef<AbortController | null>(null);
 
   const refreshCorpusStatus = useCallback(async () => {
@@ -83,6 +91,13 @@ export default function HomePage() {
     saveMessages(activeSessionId, messages);
   }, [messages, activeSessionId]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+    }
+    return () => stopSpeaking();
+  }, []);
+
   const updateSessionTitle = useCallback(
     (sessionId: string, query: string) => {
       setSessions((prev) => {
@@ -100,11 +115,122 @@ export default function HomePage() {
     []
   );
 
+  const runAssistantStream = useCallback(
+    async (query: string, assistantId: string, sessionId: string) => {
+      abortRef.current?.abort();
+      abortRef.current = new AbortController();
+      setIsStreaming(true);
+      setError(null);
+      setStatusLine("检索上下文…");
+
+      try {
+        let accumulated = "";
+        let thinkingAccum = "";
+
+        for await (const event of streamChat(
+          query,
+          sessionId,
+          abortRef.current.signal
+        )) {
+          if (event.type === "thinking") {
+            thinkingAccum += event.content;
+            setStatusLine("思考中…");
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      thinking: thinkingAccum,
+                      isThinking: true,
+                      isStreaming: true,
+                    }
+                  : m
+              )
+            );
+          } else if (event.type === "token") {
+            if (event.content === "Empty Response") continue;
+            accumulated += event.content;
+            setStatusLine("生成回答…");
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: accumulated,
+                      isThinking: false,
+                      isStreaming: true,
+                    }
+                  : m
+              )
+            );
+          } else if (event.type === "done") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: accumulated,
+                      thinking: thinkingAccum || undefined,
+                      sources: event.sources,
+                      isStreaming: false,
+                      isThinking: false,
+                      feedback: undefined,
+                    }
+                  : m
+              )
+            );
+            setStatusLine("就绪");
+          } else if (event.type === "error") {
+            throw new Error(event.message);
+          }
+        }
+      } catch (err) {
+        if ((err as Error).name === "AbortError") {
+          setStatusLine("已停止");
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    isThinking: false,
+                    content:
+                      m.content?.trim() ||
+                      m.thinking?.trim() ||
+                      "（已停止生成）",
+                  }
+                : m
+            )
+          );
+          notify("已停止生成", "info");
+          return;
+        }
+        const message = err instanceof Error ? err.message : "流式传输失败";
+        setError(message);
+        setStatusLine("错误");
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content: `**错误：** ${message}`,
+                  isStreaming: false,
+                  isThinking: false,
+                }
+              : m
+          )
+        );
+        notify(message, "error");
+      } finally {
+        setIsStreaming(false);
+        setRegeneratingId(null);
+      }
+    },
+    [notify]
+  );
+
   const handleSend = async (query: string) => {
     if (!activeSessionId || isStreaming) return;
-
-    setError(null);
-    setStatusLine("检索上下文…");
 
     const userMessage: Message = {
       id: `msg_${Date.now()}_user`,
@@ -124,115 +250,68 @@ export default function HomePage() {
 
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
     updateSessionTitle(activeSessionId, query);
-    setIsStreaming(true);
+    await runAssistantStream(query, assistantId, activeSessionId);
+  };
 
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
-
-    try {
-      setStatusLine("流式响应中…");
-      let accumulated = "";
-      let thinkingAccum = "";
-
-      for await (const event of streamChat(
-        query,
-        activeSessionId,
-        abortRef.current.signal
-      )) {
-        if (event.type === "thinking") {
-          thinkingAccum += event.content;
-          setStatusLine("思考中…");
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    thinking: thinkingAccum,
-                    isThinking: true,
-                    isStreaming: true,
-                  }
-                : m
-            )
-          );
-        } else if (event.type === "token") {
-          if (event.content === "Empty Response") continue;
-          accumulated += event.content;
-          setStatusLine("生成回答…");
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    content: accumulated,
-                    isThinking: false,
-                    isStreaming: true,
-                  }
-                : m
-            )
-          );
-        } else if (event.type === "done") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    content: accumulated,
-                    thinking: thinkingAccum || undefined,
-                    sources: event.sources,
-                    isStreaming: false,
-                    isThinking: false,
-                  }
-                : m
-            )
-          );
-          setStatusLine("就绪");
-        } else if (event.type === "error") {
-          throw new Error(event.message);
-        }
-      }
-    } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        setStatusLine("已停止");
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  isStreaming: false,
-                  isThinking: false,
-                  content:
-                    m.content?.trim() ||
-                    m.thinking?.trim() ||
-                    "（已停止生成）",
-                }
-              : m
-          )
-        );
+  const handleRegenerate = useCallback(
+    async (assistantMessageId: string) => {
+      if (!activeSessionId || isStreaming) {
+        notify("请等待当前回答完成", "error");
         return;
       }
-      const message = err instanceof Error ? err.message : "流式传输失败";
-      setError(message);
-      setStatusLine("错误");
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-                ? {
-                ...m,
-                content: `**错误：** ${message}`,
-                isStreaming: false,
-                isThinking: false,
-              }
-            : m
-        )
-      );
-    } finally {
-      setIsStreaming(false);
-    }
-  };
+
+      const idx = messages.findIndex((m) => m.id === assistantMessageId);
+      if (idx < 1) {
+        notify("无法找到对应提问", "error");
+        return;
+      }
+
+      const userMsg = messages[idx - 1];
+      if (userMsg.role !== "user") {
+        notify("无法找到对应提问", "error");
+        return;
+      }
+
+      const query = userMsg.content;
+      const newAssistantId = `msg_${Date.now()}_assistant`;
+
+      stopSpeaking();
+      setSpeakingMessageId(null);
+
+      if (activeSessionId) {
+        try {
+          await clearFeedback(activeSessionId, assistantMessageId);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      setRegeneratingId(newAssistantId);
+      setMessages((prev) => {
+        const at = prev.findIndex((m) => m.id === assistantMessageId);
+        const before = prev.slice(0, at);
+        return [
+          ...before,
+          {
+            id: newAssistantId,
+            role: "assistant",
+            content: "",
+            thinking: "",
+            isStreaming: true,
+            isThinking: true,
+          },
+        ];
+      });
+
+      await runAssistantStream(query, newAssistantId, activeSessionId);
+    },
+    [activeSessionId, isStreaming, messages, notify, runAssistantStream]
+  );
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
-  }, []);
+    notify("正在停止…", "info");
+  }, [notify]);
 
   const handleMessageFeedback = useCallback(
     async (messageId: string, feedback: MessageFeedback | null) => {
@@ -265,7 +344,7 @@ export default function HomePage() {
             thinking: assistant.thinking,
             sources: assistant.sources,
           });
-          setStatusLine("已记录反馈，将用于优化资料库");
+          setStatusLine("已记录反馈");
         } else if (feedback === "up") {
           await submitFeedback({
             session_id: activeSessionId,
@@ -278,18 +357,23 @@ export default function HomePage() {
           });
         } else {
           await clearFeedback(activeSessionId, messageId);
+          notify("已取消反馈", "info");
+          return;
         }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "反馈提交失败";
         setError(message);
+        notify(message, "error");
       }
     },
-    [activeSessionId, messages]
+    [activeSessionId, messages, notify]
   );
 
   const handleNewSession = () => {
     abortRef.current?.abort();
+    stopSpeaking();
+    setSpeakingMessageId(null);
     const id = createSessionId();
     const session: ChatSession = {
       id,
@@ -305,9 +389,12 @@ export default function HomePage() {
     setMessages([]);
     setError(null);
     setStatusLine("就绪");
+    notify("已新建研究会话", "success");
   };
 
   const switchToSession = useCallback((id: string) => {
+    stopSpeaking();
+    setSpeakingMessageId(null);
     setActiveSessionId(id);
     setMessages(loadMessages(id));
     setError(null);
@@ -341,6 +428,8 @@ export default function HomePage() {
     if (activeSessionId === id) {
       abortRef.current?.abort();
       setIsStreaming(false);
+      stopSpeaking();
+      setSpeakingMessageId(null);
     }
 
     deleteSessionCaches(id);
@@ -353,6 +442,7 @@ export default function HomePage() {
     const next = sessions.filter((s) => s.id !== id);
     if (next.length === 0) {
       createFreshSession();
+      notify("会话已删除，已创建新会话", "info");
       return;
     }
 
@@ -361,6 +451,7 @@ export default function HomePage() {
     if (activeSessionId === id) {
       switchToSession(next[0].id);
     }
+    notify("会话已删除", "success");
   };
 
   const handleClearAllSessions = async () => {
@@ -375,6 +466,8 @@ export default function HomePage() {
 
     abortRef.current?.abort();
     setIsStreaming(false);
+    stopSpeaking();
+    setSpeakingMessageId(null);
 
     await Promise.all(
       sessions.map(async (s) => {
@@ -388,12 +481,14 @@ export default function HomePage() {
     );
 
     createFreshSession();
+    notify("已清空全部会话历史", "success");
   };
 
   const handleSyncLibrary = async () => {
     setIsIngesting(true);
     setError(null);
     setStatusLine("同步资料库…");
+    notify("正在同步资料库…", "info");
     try {
       const result = await ingestLibraryData(true);
       setSuggestionRefreshKey((k) => k + 1);
@@ -401,11 +496,16 @@ export default function HomePage() {
       setStatusLine(
         `已导入 ${result.ingested_nodes} 条（向量库共 ${result.stored_count} 条）`
       );
+      notify(
+        `资料库已同步：${result.ingested_nodes} 条文档`,
+        "success"
+      );
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : "导入失败";
       setError(message);
       setStatusLine("导入错误");
+      notify(message, "error");
       throw err;
     } finally {
       setIsIngesting(false);
@@ -467,6 +567,14 @@ export default function HomePage() {
                 key={message.id}
                 message={message}
                 onFeedback={handleMessageFeedback}
+                onRegenerate={handleRegenerate}
+                onNotify={notify}
+                isRegenerating={
+                  regeneratingId === message.id && message.isStreaming
+                }
+                isSpeakingThis={speakingMessageId === message.id}
+                onSpeak={(id) => setSpeakingMessageId(id)}
+                onStopSpeak={() => setSpeakingMessageId(null)}
               />
             ))}
             <div ref={bottomRef} />
@@ -485,6 +593,8 @@ export default function HomePage() {
             .slice(-3)}
         />
       </main>
+
+      <ToastStack toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 }
