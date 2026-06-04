@@ -338,11 +338,62 @@ class FinancialResearchAgent:
             return None
         return items[:count]
 
+    def corpus_based_suggestions(self, count: int = 4) -> list[str]:
+        """Instant suggestions from demo corpus tickers (no LLM)."""
+        from corpus import get_demo_corpus_meta
+
+        try:
+            tickers = list(get_demo_corpus_meta().get("tickers") or [])
+        except FileNotFoundError:
+            tickers = []
+
+        equities = [t for t in tickers if t and t != "MACRO"]
+        has_macro = "MACRO" in tickers
+        pool: list[str] = []
+
+        if len(equities) >= 2:
+            pool.append(
+                f"对比 {equities[0]} 与 {equities[1]} 营收增速及利润率"
+            )
+        if "NVDA" in equities:
+            pool.append("汇总 NVDA 数据中心业务前景（基于公告/财报）")
+        elif equities:
+            pool.append(f"汇总 {equities[0]} 最新财报要点与同比变化")
+        if has_macro:
+            pool.append("最新 FOMC 对 2025 年降息路径释放何种信号？")
+        if len(equities) >= 3:
+            sample = "、".join(equities[:4])
+            pool.append(f"生成 {sample} 等标的 KPI 对比 Markdown 表格")
+        if "JPM" in equities:
+            pool.append("分析 JPM Q4 净利息收入与 ROTCE 变化及信用成本")
+
+        seen: set[str] = set()
+        unique: list[str] = []
+        for item in pool:
+            if item not in seen:
+                seen.add(item)
+                unique.append(item)
+
+        if len(unique) >= count:
+            return unique[:count]
+        for fallback in DEFAULT_SUGGESTIONS:
+            if fallback not in seen:
+                unique.append(fallback)
+            if len(unique) >= count:
+                break
+        return unique[:count]
+
     def generate_suggestions(
         self,
         recent_queries: list[str] | None = None,
         count: int = 4,
+        *,
+        use_ai: bool = False,
     ) -> list[str]:
+        baseline = self.corpus_based_suggestions(count)
+        if not use_ai:
+            return baseline
+
         corpus_lines = self._corpus_summary_lines()
         recent_block = ""
         if recent_queries:
@@ -363,10 +414,13 @@ class FinancialResearchAgent:
             + recent_block
         )
 
-        llm = LlamaSettings.llm
-        response = llm.complete(prompt)
-        parsed = self._parse_suggestions_json(response.text, count)
-        return parsed if parsed else DEFAULT_SUGGESTIONS[:count]
+        try:
+            llm = LlamaSettings.llm
+            response = llm.complete(prompt)
+            parsed = self._parse_suggestions_json(response.text, count)
+            return parsed if parsed else baseline
+        except Exception:
+            return baseline
 
     def get_corpus_status(self) -> dict[str, Any]:
         from corpus import get_demo_corpus_meta

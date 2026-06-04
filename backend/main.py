@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -71,6 +71,10 @@ class ResetRequest(BaseModel):
 class SuggestionsRequest(BaseModel):
     recent_queries: list[str] = Field(default_factory=list, max_length=5)
     count: int = Field(default=4, ge=1, le=6)
+    use_ai: bool = Field(
+        default=False,
+        description="Use LLM to generate suggestions (slower); default uses corpus templates",
+    )
 
 
 @app.get("/health")
@@ -142,8 +146,33 @@ async def ingest(request: IngestRequest):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/suggestions")
+async def suggestions_get(
+    count: int = Query(default=4, ge=1, le=6),
+    use_ai: bool = Query(default=False),
+    session_id: str = Query(default=""),
+):
+    if agent is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    try:
+        items = await asyncio.to_thread(
+            agent.generate_suggestions,
+            [],
+            count,
+            use_ai=use_ai,
+        )
+        return {
+            "suggestions": items,
+            "source": "ai" if use_ai else "corpus",
+        }
+    except Exception as exc:
+        logger.exception("Suggestions error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/suggestions")
-async def suggestions(request: SuggestionsRequest):
+async def suggestions_post(request: SuggestionsRequest):
     if agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialized")
 
@@ -152,8 +181,12 @@ async def suggestions(request: SuggestionsRequest):
             agent.generate_suggestions,
             request.recent_queries,
             request.count,
+            use_ai=request.use_ai,
         )
-        return {"suggestions": items}
+        return {
+            "suggestions": items,
+            "source": "ai" if request.use_ai else "corpus",
+        }
     except Exception as exc:
         logger.exception("Suggestions error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -59,13 +59,35 @@ export async function* streamChat(
 }
 
 export async function fetchSuggestions(
-  recentQueries: string[] = [],
-  signal?: AbortSignal
+  options: {
+    recentQueries?: string[];
+    useAi?: boolean;
+    signal?: AbortSignal;
+  } = {}
 ): Promise<string[]> {
+  const { recentQueries = [], useAi = false, signal } = options;
+
+  if (!useAi) {
+    const response = await fetch(`${API_BASE}/api/suggestions?count=4`, {
+      method: "GET",
+      signal,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Failed to load suggestions");
+    }
+    const data = (await response.json()) as { suggestions?: string[] };
+    return data.suggestions ?? [];
+  }
+
   const response = await fetch(`${API_BASE}/api/suggestions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ recent_queries: recentQueries, count: 4 }),
+    body: JSON.stringify({
+      recent_queries: recentQueries,
+      count: 4,
+      use_ai: true,
+    }),
     signal,
   });
   if (!response.ok) {

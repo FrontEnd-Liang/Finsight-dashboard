@@ -48,11 +48,18 @@ export function ChatInput({
   const recentQueriesRef = useRef(recentQueries);
   recentQueriesRef.current = recentQueries;
 
-  const loadSuggestions = (queries: string[], options?: { force?: boolean }) => {
+  const loadSuggestions = (
+    queries: string[],
+    options?: { force?: boolean; useAi?: boolean }
+  ) => {
     const cacheKey = suggestionsCacheKey(sessionId, refreshKey);
+    const useAi = options?.useAi ?? false;
+    const cacheSuffix = useAi ? "_ai" : "";
+    const fullCacheKey = `${cacheKey}${cacheSuffix}`;
+
     if (!options?.force) {
       try {
-        const raw = sessionStorage.getItem(cacheKey);
+        const raw = sessionStorage.getItem(fullCacheKey);
         if (raw) {
           const cached = JSON.parse(raw) as string[];
           if (cached.length > 0) {
@@ -66,17 +73,30 @@ export function ChatInput({
       }
     }
 
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoadingSuggestions(true);
+    if (options?.force && abortRef.current) {
+      abortRef.current.abort();
+    }
 
-    fetchSuggestions(queries, controller.signal)
+    const controller = new AbortController();
+    if (options?.force) {
+      abortRef.current = controller;
+    }
+
+    if (!useAi) {
+      setSuggestions(FALLBACK_SUGGESTIONS);
+    }
+    setLoadingSuggestions(useAi);
+
+    fetchSuggestions({
+      recentQueries: queries,
+      useAi,
+      signal: options?.force ? controller.signal : undefined,
+    })
       .then((items) => {
         if (items.length > 0) {
           setSuggestions(items);
           try {
-            sessionStorage.setItem(cacheKey, JSON.stringify(items));
+            sessionStorage.setItem(fullCacheKey, JSON.stringify(items));
           } catch {
             /* quota exceeded etc. */
           }
@@ -94,8 +114,7 @@ export function ChatInput({
 
   useEffect(() => {
     loadSuggestions([]);
-    return () => abortRef.current?.abort();
-    // 仅在进入页面、切换会话或语料导入后加载，不随每条消息变化
+    // 不用 abort 取消请求，避免 React Strict Mode 导致 POST 永远完不成
   }, [sessionId, refreshKey]);
 
   const submit = () => {
@@ -145,8 +164,13 @@ export function ChatInput({
         <button
           type="button"
           disabled={isStreaming || loadingSuggestions}
-          onClick={() => loadSuggestions(recentQueriesRef.current, { force: true })}
-          title="刷新推荐问题"
+          onClick={() =>
+            loadSuggestions(recentQueriesRef.current, {
+              force: true,
+              useAi: true,
+            })
+          }
+          title="AI 刷新推荐问题（较慢）"
           className="rounded border border-terminal-border/80 p-1 text-muted-foreground transition hover:border-terminal-green/50 hover:text-terminal-green disabled:opacity-40"
         >
           <RefreshCw
