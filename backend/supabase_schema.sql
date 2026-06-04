@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS financial_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     content TEXT NOT NULL,
     metadata JSONB DEFAULT '{}'::jsonb,
-    embedding vector(1536),
+    embedding vector(1024),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS financial_documents_metadata_idx
 
 -- Match function used by LlamaIndex SupabaseVectorStore
 CREATE OR REPLACE FUNCTION match_financial_documents(
-    query_embedding vector(1536),
+    query_embedding vector(1024),
     match_count int DEFAULT 5,
     filter jsonb DEFAULT '{}'::jsonb
 )

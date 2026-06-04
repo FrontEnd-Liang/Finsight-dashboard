@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    deepseek_context_window: int = 128_000
 
     supabase_url: str
     supabase_service_role_key: str
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = None
     embedding_base_url: str | None = None
     embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    embedding_dimensions: int = 1024
 
     cors_origins: str = "http://localhost:3000"
 

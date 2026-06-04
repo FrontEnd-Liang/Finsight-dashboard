@@ -9,11 +9,12 @@ from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.postprocessor import SimilarityPostprocessor
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.llms.openai import OpenAI
+from llama_index.core.base.embeddings.base import BaseEmbedding
 from supabase import Client
 
 from config import Settings
+from embeddings import create_embed_model
+from llm import create_llm
 from database import insert_document, match_documents, nodes_from_matches
 
 SYSTEM_PROMPT = """You are Finsight, an expert financial research analyst AI.
@@ -33,7 +34,7 @@ class SupabaseFinancialRetriever(BaseRetriever):
     def __init__(
         self,
         client: Client,
-        embed_model: OpenAIEmbedding,
+        embed_model: BaseEmbedding,
         similarity_top_k: int = 5,
     ) -> None:
         super().__init__()
@@ -65,19 +66,8 @@ class FinancialResearchAgent:
         self._configure_llama()
 
     def _configure_llama(self) -> None:
-        LlamaSettings.llm = OpenAI(
-            model=self.settings.deepseek_model,
-            api_key=self.settings.deepseek_api_key,
-            api_base=self.settings.deepseek_base_url,
-            temperature=0.2,
-            max_tokens=4096,
-        )
-        LlamaSettings.embed_model = OpenAIEmbedding(
-            model=self.settings.embedding_model,
-            api_key=self.settings.embedding_api_key or self.settings.deepseek_api_key,
-            api_base=self.settings.embedding_base_url or self.settings.deepseek_base_url,
-            dimensions=self.settings.embedding_dimensions,
-        )
+        LlamaSettings.llm = create_llm(self.settings)
+        LlamaSettings.embed_model = create_embed_model(self.settings)
         LlamaSettings.chunk_size = 1024
         LlamaSettings.chunk_overlap = 128
 
@@ -137,7 +127,7 @@ class FinancialResearchAgent:
         if not documents:
             return 0
 
-        embed_model: OpenAIEmbedding = LlamaSettings.embed_model  # type: ignore[assignment]
+        embed_model: BaseEmbedding = LlamaSettings.embed_model  # type: ignore[assignment]
         ingested = 0
 
         for doc in documents:

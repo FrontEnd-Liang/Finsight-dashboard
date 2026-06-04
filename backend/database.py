@@ -1,7 +1,7 @@
 from typing import Any
 
 from llama_index.core.schema import NodeWithScore, TextNode
-from supabase import Client
+from supabase import Client, create_client
 
 from config import Settings
 
