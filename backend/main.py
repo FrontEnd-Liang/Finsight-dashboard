@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agent import FinancialResearchAgent, get_demo_documents
+from agent import FinancialResearchAgent
+from corpus import get_demo_documents
 from config import get_settings
 from database import create_supabase_client, ensure_vector_store_ready
 
@@ -57,6 +58,10 @@ class ChatRequest(BaseModel):
 class IngestRequest(BaseModel):
     documents: list[dict[str, Any]] | None = None
     use_demo: bool = False
+    replace: bool = Field(
+        default=False,
+        description="Clear existing financial_documents before ingest (recommended for demo reload)",
+    )
 
 
 class ResetRequest(BaseModel):
@@ -103,6 +108,17 @@ async def chat(request: ChatRequest):
     )
 
 
+@app.get("/api/corpus/status")
+async def corpus_status():
+    if agent is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+    try:
+        return await asyncio.to_thread(agent.get_corpus_status)
+    except Exception as exc:
+        logger.exception("Corpus status error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/ingest")
 async def ingest(request: IngestRequest):
     if agent is None:
@@ -113,8 +129,14 @@ async def ingest(request: IngestRequest):
         docs = get_demo_documents()
 
     try:
-        count = agent.ingest_documents(docs)
-        return {"ingested_nodes": count, "status": "success"}
+        count = agent.ingest_documents(docs, replace=request.replace)
+        total = agent.get_corpus_status()["stored_count"]
+        return {
+            "ingested_nodes": count,
+            "stored_count": total,
+            "status": "success",
+            "replaced": request.replace,
+        }
     except Exception as exc:
         logger.exception("Ingest error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

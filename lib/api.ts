@@ -76,11 +76,37 @@ export async function fetchSuggestions(
   return data.suggestions ?? [];
 }
 
-export async function ingestDemoData(): Promise<{ ingested_nodes: number }> {
+export interface CorpusStatus {
+  stored_count: number;
+  demo_file_count: number;
+  demo_tickers: string[];
+  demo_file: string;
+  is_loaded: boolean;
+}
+
+export interface IngestDemoResponse {
+  ingested_nodes: number;
+  stored_count: number;
+  status: string;
+  replaced?: boolean;
+}
+
+export async function fetchCorpusStatus(): Promise<CorpusStatus> {
+  const response = await fetch(`${API_BASE}/api/corpus/status`);
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || "Failed to fetch corpus status");
+  }
+  return response.json();
+}
+
+export async function ingestDemoData(
+  replace = true
+): Promise<IngestDemoResponse> {
   const response = await fetch(`${API_BASE}/api/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ use_demo: true }),
+    body: JSON.stringify({ use_demo: true, replace }),
   });
   if (!response.ok) {
     const text = await response.text();

@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import {
   BarChart3,
+  CheckCircle2,
   Database,
+  Loader2,
   MessageSquarePlus,
   Trash2,
   TrendingUp,
@@ -10,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import type { CorpusStatus, IngestDemoResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export interface ChatSession {
@@ -24,7 +28,10 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
   onDeleteSession: (id: string) => void;
-  onIngestDemo: () => void;
+  /** 从 backend/data/demo_corpus.json 注入向量库 */
+  onIngestDemo: () => Promise<IngestDemoResponse>;
+  corpusStatus: CorpusStatus | null;
+  onRefreshCorpusStatus?: () => void;
   isIngesting?: boolean;
 }
 
@@ -35,8 +42,36 @@ export function Sidebar({
   onNewSession,
   onDeleteSession,
   onIngestDemo,
-  isIngesting,
+  corpusStatus,
+  onRefreshCorpusStatus,
+  isIngesting = false,
 }: SidebarProps) {
+  const [ingestFeedback, setIngestFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const handleIngestDemo = async () => {
+    setIngestFeedback(null);
+    try {
+      const result = await onIngestDemo();
+      const tickers = corpusStatus?.demo_tickers?.join(", ") ?? "演示标的";
+      setIngestFeedback({
+        type: "success",
+        message: `已注入 ${result.ingested_nodes} 条（库内共 ${result.stored_count} 条）· ${tickers}`,
+      });
+      onRefreshCorpusStatus?.();
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "语料导入失败，请检查后端与 Supabase";
+      setIngestFeedback({ type: "error", message });
+    }
+  };
+
+  const storedCount = corpusStatus?.stored_count ?? 0;
+  const demoCount = corpusStatus?.demo_file_count ?? 0;
+  const isLoaded = corpusStatus?.is_loaded ?? false;
+
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-terminal-border bg-terminal-panel">
       <div className="flex items-center gap-2 border-b border-terminal-border px-4 py-4">
@@ -65,12 +100,32 @@ export function Sidebar({
         <Button
           variant="outline"
           className="w-full justify-start gap-2 border-terminal-border font-mono text-xs"
-          onClick={onIngestDemo}
+          onClick={handleIngestDemo}
           disabled={isIngesting}
+          title="读取 backend/data/demo_corpus.json，向 Supabase 向量表写入演示财报"
         >
-          <Database className="h-4 w-4" />
+          {isIngesting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Database className="h-4 w-4" />
+          )}
           {isIngesting ? "导入中…" : "加载演示语料库"}
         </Button>
+        {ingestFeedback && (
+          <p
+            className={cn(
+              "rounded border px-2 py-1.5 font-mono text-[9px] leading-relaxed",
+              ingestFeedback.type === "success"
+                ? "border-terminal-green/40 bg-terminal-green/5 text-terminal-green"
+                : "border-terminal-red/40 bg-terminal-red/5 text-terminal-red"
+            )}
+          >
+            {ingestFeedback.type === "success" && (
+              <CheckCircle2 className="mb-0.5 mr-1 inline h-3 w-3" />
+            )}
+            {ingestFeedback.message}
+          </p>
+        )}
       </div>
 
       <Separator className="bg-terminal-border" />
@@ -126,7 +181,33 @@ export function Sidebar({
 
       <div className="border-t border-terminal-border p-3">
         <div className="rounded border border-terminal-border bg-background/40 p-2 font-mono text-[9px] leading-relaxed text-muted-foreground">
-          <span className="text-terminal-green">实时</span> · 纽交所延时行情
+          <span className="text-terminal-green">语料库</span>
+          {corpusStatus ? (
+            <>
+              {" "}
+              · 已存{" "}
+              <span
+                className={
+                  isLoaded ? "text-terminal-green" : "text-terminal-amber"
+                }
+              >
+                {storedCount}
+              </span>{" "}
+              / 演示文件 {demoCount} 条
+              <br />
+              数据文件:{" "}
+              <span className="text-foreground/80">
+                backend/data/{corpusStatus.demo_file}
+              </span>
+              <br />
+              标的: {corpusStatus.demo_tickers.join(" · ") || "—"}
+            </>
+          ) : (
+            <>
+              {" "}
+              · <span className="text-terminal-amber">连接后端中…</span>
+            </>
+          )}
           <br />
           RAG: financial_documents
           <br />

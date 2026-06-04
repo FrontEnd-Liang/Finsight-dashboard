@@ -25,6 +25,9 @@ flowchart LR
 ├── lib/                    # API 客户端、会话本地存储
 ├── backend/
 │   ├── agent.py            # LlamaIndex RAG + 流式输出
+│   ├── corpus.py           # 语料 JSON 加载
+│   ├── data/
+│   │   └── demo_corpus.json  # 可编辑的演示注入语料
 │   ├── config.py           # 环境变量配置
 │   ├── database.py         # Supabase 客户端
 │   ├── main.py             # FastAPI + SSE 接口
@@ -102,7 +105,7 @@ npm run dev
 ## 演示流程（作品集录屏参考）
 
 1. 分别启动后端（`uvicorn`）与前端（`npm run dev`）。
-2. 在侧边栏点击 **「加载演示语料库」** —— 导入 AAPL、MSFT、NVDA、JPM 及 FOMC 示例公告/财报。
+2. 在侧边栏点击 **「加载演示语料库」** —— 从 `backend/data/demo_corpus.json` 导入 AAPL、MSFT、NVDA、GOOGL、AMZN、TSLA、JPM 及 FOMC 等片段（会先清空旧向量再写入，避免重复）。
 3. 输入示例问题，例如：*「对比 AAPL 与 MSFT 营收增速及利润率，并以 Markdown 表格输出。」*
 4. 观察 SSE 流式输出，以及引用来源（股票代码、公告类型、相似度分数）。
 
@@ -112,7 +115,8 @@ npm run dev
 |------|------|------|
 | `GET` | `/health` | 健康检查 |
 | `POST` | `/api/chat` | SSE 流式对话（`query`、`session_id`） |
-| `POST` | `/api/ingest` | 导入文档（`use_demo: true` 或自定义 `documents`） |
+| `GET` | `/api/corpus/status` | 向量库条数与演示语料文件元信息 |
+| `POST` | `/api/ingest` | 导入文档（`use_demo: true`、`replace: true` 或自定义 `documents`） |
 | `POST` | `/api/reset` | 清除指定会话的服务端对话记忆 |
 
 ### SSE 事件格式

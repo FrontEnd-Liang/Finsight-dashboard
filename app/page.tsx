@@ -6,7 +6,13 @@ import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessage, type Message } from "@/components/chat/chat-message";
 import { Sidebar, type ChatSession } from "@/components/layout/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ingestDemoData, resetSession, streamChat } from "@/lib/api";
+import {
+  fetchCorpusStatus,
+  ingestDemoData,
+  resetSession,
+  streamChat,
+  type CorpusStatus,
+} from "@/lib/api";
 import {
   createSessionId,
   deleteMessages,
@@ -26,8 +32,22 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("就绪");
   const [suggestionRefreshKey, setSuggestionRefreshKey] = useState(0);
+  const [corpusStatus, setCorpusStatus] = useState<CorpusStatus | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const refreshCorpusStatus = useCallback(async () => {
+    try {
+      const status = await fetchCorpusStatus();
+      setCorpusStatus(status);
+    } catch {
+      setCorpusStatus(null);
+    }
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    refreshCorpusStatus();
+  }, [refreshCorpusStatus]);
 
   useEffect(() => {
     const stored = loadSessions();
@@ -269,13 +289,18 @@ export default function HomePage() {
     setError(null);
     setStatusLine("导入演示语料库…");
     try {
-      const result = await ingestDemoData();
+      const result = await ingestDemoData(true);
       setSuggestionRefreshKey((k) => k + 1);
-      setStatusLine(`已导入 ${result.ingested_nodes} 份文档`);
+      await refreshCorpusStatus();
+      setStatusLine(
+        `已导入 ${result.ingested_nodes} 条（向量库共 ${result.stored_count} 条）`
+      );
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : "导入失败";
       setError(message);
       setStatusLine("导入错误");
+      throw err;
     } finally {
       setIsIngesting(false);
     }
@@ -290,6 +315,8 @@ export default function HomePage() {
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
         onIngestDemo={handleIngestDemo}
+        corpusStatus={corpusStatus}
+        onRefreshCorpusStatus={refreshCorpusStatus}
         isIngesting={isIngesting}
       />
 
