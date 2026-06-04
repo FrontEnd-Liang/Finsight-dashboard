@@ -6,25 +6,9 @@
 
 ## 演示视频
 
-[![Finsight Dashboard 产品演示 — 点击播放](./assets/demo-poster.jpg)](https://github.com/FrontEnd-Liang/Finsight-dashboard/raw/main/assets/demo.mp4)
+https://github.com/user-attachments/assets/c0dc92bb-7817-436e-8d38-4b2847d5a19b
 
-**点击封面图** 可在新标签页直接播放完整演示（[`assets/demo.mp4`](./assets/demo.mp4)）。
-
-<details>
-<summary><strong>想在 README 里内嵌可播放视频？</strong>（GitHub 限制说明）</summary>
-
-GitHub **会过滤** README 里的 `<video>` 标签，仓库里的 mp4 **不能**像网页一样自动嵌播放器，因此上方使用**封面图 + 点击播放**。
-
-若要在本页**直接出现播放器**，请用 GitHub 官方方式（一次性操作）：
-
-1. 在 GitHub 网页打开本仓库 → 编辑 `README.md`
-2. 把本地的 `assets/demo.mp4` **拖进**编辑器（或粘贴）
-3. GitHub 会生成 `https://github.com/user-attachments/assets/...` 链接并自动渲染播放器
-4. 将该链接**替换**到「演示视频」标题下方，提交即可
-
-本地克隆也可直接双击打开 [`assets/demo.mp4`](./assets/demo.mp4)。
-
-</details>
+> 本地文件：[`assets/demo.mp4`](./assets/demo.mp4)（高清完整版）· [`assets/demo-under10mb.mp4`](./assets/demo-under10mb.mp4)（小于 10MB，适合 Wiki 上传）
 
 ## 核心能力
 
@@ -80,8 +64,9 @@ flowchart TB
 
 ```
 ├── assets/
-│   ├── demo.mp4              # 产品演示录屏
-│   └── demo-poster.jpg         # README 封面（点击跳转播放）
+│   ├── demo.mp4              # 产品演示录屏（高清）
+│   ├── demo-under10mb.mp4      # 压缩版（Wiki / 小体积场景）
+│   └── demo-poster.jpg         # 演示封面图
 ├── app/                      # Next.js App Router 主页面
 ├── components/
 │   ├── chat/                 # ChatInput、ChatMessage、Markdown
