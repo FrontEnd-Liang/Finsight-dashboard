@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, AlertCircle } from "lucide-react";
 import { ChatInput } from "@/components/chat/chat-input";
-import { ChatMessage, type Message } from "@/components/chat/chat-message";
+import {
+  ChatMessage,
+  type Message,
+  type MessageFeedback,
+} from "@/components/chat/chat-message";
 import { Sidebar, type ChatSession } from "@/components/layout/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -227,6 +231,19 @@ export default function HomePage() {
     abortRef.current?.abort();
   }, []);
 
+  const handleMessageFeedback = useCallback(
+    (messageId: string, feedback: MessageFeedback | null) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId
+            ? { ...m, feedback: feedback ?? undefined }
+            : m
+        )
+      );
+    },
+    []
+  );
+
   const handleNewSession = () => {
     abortRef.current?.abort();
     const id = createSessionId();
@@ -356,7 +373,11 @@ export default function HomePage() {
               </div>
             )}
             {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
+              <ChatMessage
+                key={message.id}
+                message={message}
+                onFeedback={handleMessageFeedback}
+              />
             ))}
             <div ref={bottomRef} />
           </div>

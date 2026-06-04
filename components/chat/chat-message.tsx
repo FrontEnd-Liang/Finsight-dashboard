@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, ChevronDown, ChevronRight, User } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, ThumbsDown, ThumbsUp, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownMessage } from "./markdown-message";
 import type { SourceRef } from "@/lib/api";
+
+export type MessageFeedback = "up" | "down";
 
 export interface Message {
   id: string;
@@ -12,19 +14,31 @@ export interface Message {
   content: string;
   thinking?: string;
   sources?: SourceRef[];
+  feedback?: MessageFeedback;
   isStreaming?: boolean;
   isThinking?: boolean;
 }
 
 interface ChatMessageProps {
   message: Message;
+  onFeedback?: (messageId: string, feedback: MessageFeedback | null) => void;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, onFeedback }: ChatMessageProps) {
   const isUser = message.role === "user";
   const hasThinking =
     Boolean(message.thinking?.trim()) || Boolean(message.isThinking);
   const [thinkingOpen, setThinkingOpen] = useState(true);
+  const showFeedback =
+    !isUser &&
+    !message.isStreaming &&
+    Boolean(message.content?.trim()) &&
+    onFeedback;
+
+  const setFeedback = (next: MessageFeedback) => {
+    if (!onFeedback) return;
+    onFeedback(message.id, message.feedback === next ? null : next);
+  };
 
   return (
     <div
@@ -84,17 +98,58 @@ export function ChatMessage({ message }: ChatMessageProps) {
             <MarkdownMessage content={message.content || " "} />
           </>
         )}
-        {!isUser && message.sources && message.sources.length > 0 && (
-          <div className="flex flex-wrap gap-2 pt-1">
-            {message.sources.map((src, i) => (
-              <span
-                key={`${src.ticker}-${i}`}
-                className="rounded border border-terminal-border bg-terminal-panel px-2 py-0.5 font-mono text-[10px] text-terminal-green/80"
-              >
-                {src.ticker ?? "文档"} · {src.source ?? "来源"} ·{" "}
-                {src.score?.toFixed(2)}
-              </span>
-            ))}
+        {!isUser && (showFeedback || (message.sources && message.sources.length > 0)) && (
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            {message.sources && message.sources.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {message.sources.map((src, i) => (
+                  <span
+                    key={`${src.ticker}-${i}`}
+                    className="rounded border border-terminal-border bg-terminal-panel px-2 py-0.5 font-mono text-[10px] text-terminal-green/80"
+                  >
+                    {src.ticker ?? "文档"} · {src.source ?? "来源"} ·{" "}
+                    {src.score?.toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span />
+            )}
+            {showFeedback && (
+              <div className="flex items-center gap-1">
+                <span className="mr-1 font-mono text-[9px] text-muted-foreground/70">
+                  这条回答有帮助吗？
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFeedback("up")}
+                  aria-label="有帮助"
+                  aria-pressed={message.feedback === "up"}
+                  className={cn(
+                    "rounded border p-1 transition",
+                    message.feedback === "up"
+                      ? "border-terminal-green/60 bg-terminal-green/15 text-terminal-green"
+                      : "border-terminal-border text-muted-foreground hover:border-terminal-green/40 hover:text-terminal-green"
+                  )}
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedback("down")}
+                  aria-label="无帮助"
+                  aria-pressed={message.feedback === "down"}
+                  className={cn(
+                    "rounded border p-1 transition",
+                    message.feedback === "down"
+                      ? "border-terminal-red/60 bg-terminal-red/15 text-terminal-red"
+                      : "border-terminal-border text-muted-foreground hover:border-terminal-red/40 hover:text-terminal-red"
+                  )}
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
