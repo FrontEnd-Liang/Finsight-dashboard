@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bot,
   Brain,
@@ -34,6 +34,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   thinking?: string;
+  thinkingStep?: string;
   sources?: SourceRef[];
   feedback?: MessageFeedback;
   isStreaming?: boolean;
@@ -198,6 +199,12 @@ export function ChatMessage({
   const [thinkingDialogOpen, setThinkingDialogOpen] = useState(false);
   const [sourcesDialogOpen, setSourcesDialogOpen] = useState(false);
 
+  useEffect(() => {
+    if (message.isThinking) {
+      setThinkingOpen(true);
+    }
+  }, [message.isThinking]);
+
   const showActions =
     !isUser && !message.isStreaming && Boolean(message.content?.trim());
   const showFeedback = showActions && onFeedback;
@@ -306,35 +313,78 @@ export function ChatMessage({
             </p>
           ) : (
             <>
-              {hasThinking && (
-                <div className="rounded border border-terminal-border/80 bg-terminal-panel/50">
+              {(hasThinking || message.isThinking) && (
+                <div
+                  className={cn(
+                    "rounded border bg-terminal-panel/50 transition-colors",
+                    message.isThinking
+                      ? "border-terminal-amber/40 shadow-[0_0_12px_rgba(251,191,36,0.08)]"
+                      : "border-terminal-border/80"
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => setThinkingOpen((o) => !o)}
                     className="flex w-full items-center justify-between gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-terminal-amber/90 hover:text-terminal-amber"
                   >
-                    <span className="flex items-center gap-2">
-                      <Brain className="h-3 w-3" />
-                      思考过程（内联预览）
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <Brain
+                        className={cn(
+                          "h-3 w-3 shrink-0",
+                          message.isThinking && "animate-pulse"
+                        )}
+                      />
+                      <span className="truncate">
+                        {message.isThinking
+                          ? message.thinkingStep || "思考中…"
+                          : "思考过程（内联预览）"}
+                      </span>
+                      {message.isThinking && (
+                        <span className="inline-flex shrink-0 gap-0.5">
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-terminal-amber [animation-delay:0ms]" />
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-terminal-amber [animation-delay:120ms]" />
+                          <span className="h-1 w-1 animate-bounce rounded-full bg-terminal-amber [animation-delay:240ms]" />
+                        </span>
+                      )}
                     </span>
-                    <span className="text-[9px] text-muted-foreground">
+                    <span className="shrink-0 text-[9px] text-muted-foreground">
                       {thinkingOpen ? "收起" : "展开"}
                     </span>
                   </button>
                   {thinkingOpen && (
                     <div className="border-t border-terminal-border/60 px-3 py-2">
-                      <MarkdownMessage
-                        content={
-                          message.thinking?.trim() ||
-                          "正在检索资料库并规划分析路径…"
-                        }
-                        className="text-xs text-muted-foreground [&_p]:leading-relaxed"
-                      />
+                      {message.thinking?.trim() ? (
+                        <div className="relative">
+                          <MarkdownMessage
+                            content={message.thinking}
+                            className="text-xs text-muted-foreground [&_p]:leading-relaxed"
+                          />
+                          {message.isThinking && (
+                            <span
+                              className="ml-0.5 inline-block h-3.5 w-1.5 animate-blink bg-terminal-amber align-middle"
+                              aria-hidden
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <p className="font-mono text-xs text-muted-foreground/80">
+                          {message.thinkingStep ||
+                            "正在检索资料库并规划分析路径…"}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
               )}
-              <MarkdownMessage content={message.content || " "} />
+              {message.content?.trim() ? (
+                <MarkdownMessage content={message.content} />
+              ) : message.isStreaming && !message.isThinking ? (
+                <p className="font-mono text-xs text-muted-foreground/70">
+                  正在生成回答…
+                </p>
+              ) : message.isThinking ? null : (
+                <MarkdownMessage content=" " />
+              )}
             </>
           )}
 

@@ -3,6 +3,7 @@ const API_BASE =
 
 export type SSEEvent =
   | { type: "thinking"; content: string }
+  | { type: "thinking_step"; label: string }
   | { type: "token"; content: string }
   | { type: "done"; sources?: SourceRef[] }
   | { type: "error"; message: string };

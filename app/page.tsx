@@ -121,7 +121,7 @@ export default function HomePage() {
       abortRef.current = new AbortController();
       setIsStreaming(true);
       setError(null);
-      setStatusLine("检索上下文…");
+      setStatusLine("准备分析…");
 
       try {
         let accumulated = "";
@@ -132,9 +132,22 @@ export default function HomePage() {
           sessionId,
           abortRef.current.signal
         )) {
-          if (event.type === "thinking") {
+          if (event.type === "thinking_step") {
+            setStatusLine(event.label);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      thinkingStep: event.label,
+                      isThinking: true,
+                      isStreaming: true,
+                    }
+                  : m
+              )
+            );
+          } else if (event.type === "thinking") {
             thinkingAccum += event.content;
-            setStatusLine("思考中…");
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId
@@ -158,6 +171,7 @@ export default function HomePage() {
                       ...m,
                       content: accumulated,
                       isThinking: false,
+                      thinkingStep: undefined,
                       isStreaming: true,
                     }
                   : m
@@ -171,6 +185,7 @@ export default function HomePage() {
                       ...m,
                       content: accumulated,
                       thinking: thinkingAccum || undefined,
+                      thinkingStep: undefined,
                       sources: event.sources,
                       isStreaming: false,
                       isThinking: false,

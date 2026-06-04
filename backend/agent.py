@@ -237,87 +237,144 @@ class FinancialResearchAgent:
 
         return plans[:5]
 
-    def _format_retrieval_thinking(
-        self, query: str, nodes: list[NodeWithScore]
-    ) -> str:
+    def _format_node_thinking_block(self, rank: int, node: NodeWithScore) -> str:
+        meta = node.metadata or {}
+        ref = self._node_to_source_ref(rank, node)
+        ticker = ref.get("ticker") or "—"
+        source = ref.get("source") or "—"
+        sector = meta.get("sector") or "—"
+        doc_type = meta.get("type") or "—"
+        fy = meta.get("fiscal_year")
+        fq = meta.get("fiscal_quarter")
+        period_parts: list[str] = []
+        if fy is not None:
+            period_parts.append(f"FY{fy}")
+        if fq:
+            period_parts.append(str(fq))
+        period_label = " ".join(period_parts) if period_parts else "—"
+        latest_tag = " · **最新披露**" if meta.get("is_latest") else ""
+        score = ref["score"]
+        rel = ref["relevance"]
+        excerpt = (ref.get("excerpt") or "").replace("\n", " ")
+
         lines = [
-            "## 问题理解",
-            query.strip(),
-            "",
-            "## 检索策略",
-            f"- 将问题编码为 {self.settings.embedding_dimensions} 维向量，"
-            "在 `financial_documents` 表做 pgvector 余弦近邻检索。",
-            f"- 取 Top **{self.settings.rag_top_k}** 条；同分时优先 `is_latest` 披露。",
-            "- 资料为已入库研报/财报摘要，**非**实时行情推送。",
-            "",
+            f"### {rank}. `{ticker}` — {source}{latest_tag}",
+            (
+                f"- **相似度：** {score}（相关度：**{rel}**） · "
+                f"**板块：** {sector} · **类型：** {doc_type}"
+            ),
+        ]
+        if meta.get("period_end"):
+            lines.append(f"- **报告期末：** {meta.get('period_end')}")
+        if meta.get("filed_date"):
+            lines.append(f"- **披露/入库日期：** {meta.get('filed_date')}")
+        lines.append(f"- **期间标签：** {period_label}")
+        if ref.get("document_id"):
+            lines.append(f"- **文档 ID：** `{ref['document_id']}`")
+        lines.append("- **正文摘录：**")
+        lines.append(f"  > {excerpt}")
+        return "\n".join(lines)
+
+    def _build_thinking_chunks(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> list[str]:
+        """Ordered markdown sections streamed one after another."""
+        chunks: list[str] = [
+            f"## 问题理解\n{query.strip()}",
+            (
+                "## 检索策略\n"
+                f"- 将问题编码为 {self.settings.embedding_dimensions} 维向量，"
+                "在 `financial_documents` 表做 pgvector 余弦近邻检索。\n"
+                f"- 取 Top **{self.settings.rag_top_k}** 条；同分时优先 `is_latest` 披露。\n"
+                "- 资料为已入库研报/财报摘要，**非**实时行情推送。"
+            ),
         ]
         if not nodes:
-            lines.extend(
-                [
-                    "## 检索结果",
-                    "- **未命中**相关文档（语料库为空或语义不匹配）。",
-                    "",
-                    "## 分析规划",
-                    "- 明确证据缺口，不作无依据的数字预测。",
-                ]
+            chunks.append(
+                "## 检索结果\n- **未命中**相关文档（语料库为空或语义不匹配）。"
             )
-            return "\n".join(lines)
+            chunks.append("## 分析规划\n- 明确证据缺口，不作无依据的数字预测。")
+            return chunks
 
-        lines.append("## 检索结果")
-        lines.append(
+        chunks.append(
+            "## 检索结果\n"
             f"共命中 **{len(nodes)}** 条（按语义相似度降序；"
             "相似度 ≠ 日历最新，请结合披露日期判断）。"
         )
-        lines.append("")
-
         for i, node in enumerate(nodes[: self.settings.rag_top_k], start=1):
-            meta = node.metadata or {}
-            ref = self._node_to_source_ref(i, node)
-            ticker = ref.get("ticker") or "—"
-            source = ref.get("source") or "—"
-            sector = meta.get("sector") or "—"
-            doc_type = meta.get("type") or "—"
-            fy = meta.get("fiscal_year")
-            fq = meta.get("fiscal_quarter")
-            period_parts = []
-            if fy is not None:
-                period_parts.append(f"FY{fy}")
-            if fq:
-                period_parts.append(str(fq))
-            period_label = " ".join(period_parts) if period_parts else "—"
-            latest_tag = " · **最新披露**" if meta.get("is_latest") else ""
-            score = ref["score"]
-            rel = ref["relevance"]
-            excerpt = (ref.get("excerpt") or "").replace("\n", " ")
+            chunks.append(self._format_node_thinking_block(i, node))
 
-            lines.append(f"### {i}. `{ticker}` — {source}{latest_tag}")
-            lines.append(
-                f"- **相似度：** {score}（相关度：**{rel}**） · "
-                f"**板块：** {sector} · **类型：** {doc_type}"
-            )
-            if meta.get("period_end"):
-                lines.append(f"- **报告期末：** {meta.get('period_end')}")
-            if meta.get("filed_date"):
-                lines.append(f"- **披露/入库日期：** {meta.get('filed_date')}")
-            lines.append(f"- **期间标签：** {period_label}")
-            if ref.get("document_id"):
-                lines.append(f"- **文档 ID：** `{ref['document_id']}`")
-            lines.append(f"- **正文摘录：**")
-            lines.append(f"  > {excerpt}")
-            lines.append("")
-
-        lines.append("## 分析规划")
-        for step in self._infer_analysis_plan(query, nodes):
-            lines.append(f"- {step}")
-        lines.extend(
-            [
-                "",
-                "## 说明",
-                "- 以上摘录将注入大模型上下文；回答中会再次标注引用期间。",
-                "- 若需更新库内披露，请在侧边栏 **同步资料库**。",
-            ]
+        plan_lines = ["## 分析规划"]
+        plan_lines.extend(f"- {step}" for step in self._infer_analysis_plan(query, nodes))
+        chunks.append("\n".join(plan_lines))
+        chunks.append(
+            "## 说明\n"
+            "- 以上摘录将注入大模型上下文；回答中会再次标注引用期间。\n"
+            "- 若需更新库内披露，请在侧边栏 **同步资料库**。"
         )
-        return "\n".join(lines)
+        return chunks
+
+    def _format_retrieval_thinking(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> str:
+        return "\n\n".join(self._build_thinking_chunks(query, nodes))
+
+    @staticmethod
+    def _thinking_line_delay(line: str) -> float:
+        stripped = line.strip()
+        if not stripped:
+            return 0.012
+        if stripped.startswith("### "):
+            return 0.14
+        if stripped.startswith("## "):
+            return 0.1
+        if stripped.startswith("> "):
+            return 0.045
+        if stripped.startswith("- "):
+            return 0.038
+        return 0.032
+
+    async def _stream_thinking_events(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> AsyncGenerator[str, None]:
+        """Yield SSE payloads for progressive thinking (status + line chunks)."""
+        chunks = self._build_thinking_chunks(query, nodes)
+        node_blocks = [
+            c for c in chunks if c.lstrip().startswith("### ")
+        ]
+
+        if node_blocks:
+            yield json.dumps(
+                {
+                    "type": "thinking_step",
+                    "label": f"命中 {len(node_blocks)} 条，逐条核对摘录…",
+                },
+                ensure_ascii=False,
+            )
+            await asyncio.sleep(0.2)
+
+        for chunk in chunks:
+            if chunk.lstrip().startswith("## 分析规划"):
+                yield json.dumps(
+                    {"type": "thinking_step", "label": "拟定分析路径…"},
+                    ensure_ascii=False,
+                )
+                await asyncio.sleep(0.18)
+
+            for line in chunk.split("\n"):
+                yield json.dumps(
+                    {"type": "thinking", "content": f"{line}\n"},
+                    ensure_ascii=False,
+                )
+                await asyncio.sleep(self._thinking_line_delay(line))
+
+            await asyncio.sleep(0.16)
+
+        yield json.dumps(
+            {"type": "thinking_step", "label": "思考完成，正在生成回答…"},
+            ensure_ascii=False,
+        )
+        await asyncio.sleep(0.12)
 
     def _stream_fallback_tokens(self, query: str) -> Iterator[str]:
         """Direct LLM answer when RAG returns no usable context."""
@@ -360,10 +417,31 @@ class FinancialResearchAgent:
         self, query: str, session_id: str = "default"
     ) -> AsyncGenerator[str, None]:
         _ = session_id  # reserved for future multi-turn memory
+        yield (
+            "data: "
+            + json.dumps(
+                {"type": "thinking_step", "label": "理解问题中…"},
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
+        await asyncio.sleep(0.2)
+
+        yield (
+            "data: "
+            + json.dumps(
+                {
+                    "type": "thinking_step",
+                    "label": "检索资料库（向量相似度）…",
+                },
+                ensure_ascii=False,
+            )
+            + "\n\n"
+        )
         nodes = await asyncio.to_thread(self._retrieve_for_query, query)
-        retrieval_thinking = self._format_retrieval_thinking(query, nodes)
-        payload = json.dumps({"type": "thinking", "content": retrieval_thinking})
-        yield f"data: {payload}\n\n"
+
+        async for thinking_payload in self._stream_thinking_events(query, nodes):
+            yield f"data: {thinking_payload}\n\n"
 
         loop = asyncio.get_running_loop()
         token_queue: asyncio.Queue[str | None] = asyncio.Queue()
