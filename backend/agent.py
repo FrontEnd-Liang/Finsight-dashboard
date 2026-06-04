@@ -94,9 +94,93 @@ class FinancialResearchAgent:
             )
         return self._chat_engines[session_id]
 
+    def _retrieve_for_query(self, query: str) -> list[NodeWithScore]:
+        retriever = self._get_retriever()
+        return retriever.retrieve(query)
+
+    def _format_retrieval_thinking(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> str:
+        lines = [
+            f"**问题理解：** {query.strip()}",
+            "",
+            "**知识库检索：**",
+        ]
+        if not nodes:
+            lines.append(
+                "- 未命中相关文档（相似度低于阈值或语料库为空），将基于模型常识作答并标注证据缺口。"
+            )
+            return "\n".join(lines)
+
+        lines.append(f"- 命中 {len(nodes)} 条相关记录：")
+        for i, node in enumerate(nodes[:5], start=1):
+            meta = node.metadata or {}
+            ticker = meta.get("ticker") or "—"
+            source = meta.get("source") or "—"
+            score = round(float(node.score or 0), 4)
+            snippet = (node.get_content() or "").replace("\n", " ")[:120]
+            lines.append(
+                f"  {i}. `{ticker}` · {source} · 相似度 {score} — {snippet}…"
+            )
+        lines.extend(["", "**分析规划：**"])
+        return "\n".join(lines)
+
+    def _stream_thinking_tokens(self, query: str, nodes: list[NodeWithScore]):
+        llm = LlamaSettings.llm
+        context_lines: list[str] = []
+        for node in nodes[:3]:
+            meta = node.metadata or {}
+            context_lines.append(
+                f"- {meta.get('ticker', '?')} ({meta.get('source', '?')}): "
+                f"{(node.get_content() or '')[:280]}"
+            )
+        context_block = (
+            "\n".join(context_lines) if context_lines else "（无检索上下文）"
+        )
+        prompt = (
+            "你是 Finsight 金融研究助手。根据用户问题与检索片段，"
+            "用中文写出简明的内部分析思路（3～5 条要点，可用 Markdown 列表），"
+            "说明将如何论证、对比哪些指标、需注意哪些风险。"
+            "不要写最终结论或完整报告，仅输出思考过程。\n\n"
+            f"用户问题：{query.strip()}\n\n"
+            f"检索片段：\n{context_block}"
+        )
+        response = llm.stream_complete(prompt)
+        for chunk in response:
+            delta = getattr(chunk, "delta", None) or getattr(chunk, "text", None)
+            if delta:
+                yield delta
+
     async def stream_chat(
         self, query: str, session_id: str = "default"
     ) -> AsyncGenerator[str, None]:
+        nodes = await asyncio.to_thread(self._retrieve_for_query, query)
+        retrieval_thinking = self._format_retrieval_thinking(query, nodes)
+        payload = json.dumps({"type": "thinking", "content": retrieval_thinking})
+        yield f"data: {payload}\n\n"
+
+        loop = asyncio.get_running_loop()
+        thinking_queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def produce_thinking_tokens() -> None:
+            try:
+                for token in self._stream_thinking_tokens(query, nodes):
+                    loop.call_soon_threadsafe(thinking_queue.put_nowait, token)
+            finally:
+                loop.call_soon_threadsafe(thinking_queue.put_nowait, None)
+
+        producer = asyncio.to_thread(produce_thinking_tokens)
+        producer_task = asyncio.create_task(producer)
+
+        while True:
+            token = await thinking_queue.get()
+            if token is None:
+                break
+            payload = json.dumps({"type": "thinking", "content": token})
+            yield f"data: {payload}\n\n"
+
+        await producer_task
+
         chat_engine = self._get_chat_engine(session_id)
 
         def run_stream():

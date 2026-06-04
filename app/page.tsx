@@ -90,7 +90,9 @@ export default function HomePage() {
       id: assistantId,
       role: "assistant",
       content: "",
+      thinking: "",
       isStreaming: true,
+      isThinking: true,
     };
 
     setMessages((prev) => [...prev, userMessage, assistantMessage]);
@@ -103,18 +105,40 @@ export default function HomePage() {
     try {
       setStatusLine("流式响应中…");
       let accumulated = "";
+      let thinkingAccum = "";
 
       for await (const event of streamChat(
         query,
         activeSessionId,
         abortRef.current.signal
       )) {
-        if (event.type === "token") {
-          accumulated += event.content;
+        if (event.type === "thinking") {
+          thinkingAccum += event.content;
+          setStatusLine("思考中…");
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
-                ? { ...m, content: accumulated, isStreaming: true }
+                ? {
+                    ...m,
+                    thinking: thinkingAccum,
+                    isThinking: true,
+                    isStreaming: true,
+                  }
+                : m
+            )
+          );
+        } else if (event.type === "token") {
+          accumulated += event.content;
+          setStatusLine("生成回答…");
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: accumulated,
+                    isThinking: false,
+                    isStreaming: true,
+                  }
                 : m
             )
           );
@@ -125,8 +149,10 @@ export default function HomePage() {
                 ? {
                     ...m,
                     content: accumulated,
+                    thinking: thinkingAccum || undefined,
                     sources: event.sources,
                     isStreaming: false,
+                    isThinking: false,
                   }
                 : m
             )
@@ -144,10 +170,11 @@ export default function HomePage() {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
-            ? {
+                ? {
                 ...m,
                 content: `**错误：** ${message}`,
                 isStreaming: false,
+                isThinking: false,
               }
             : m
         )
@@ -273,7 +300,7 @@ export default function HomePage() {
                 </h2>
                 <p className="mt-3 max-w-md text-sm text-muted-foreground">
                   请先从侧边栏加载演示语料库，随后可提问跨品种权益或宏观类问题。
-                  回答将通过 SSE 流式输出，并附带检索到的财报上下文。
+                  回答将先展示思考过程（检索命中与内部分析规划），再流式输出正文，并附带引用来源。
                 </p>
               </div>
             )}

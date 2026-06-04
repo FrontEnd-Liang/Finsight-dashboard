@@ -1,6 +1,7 @@
 "use client";
 
-import { Bot, User } from "lucide-react";
+import { useState } from "react";
+import { Bot, ChevronDown, ChevronRight, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarkdownMessage } from "./markdown-message";
 import type { SourceRef } from "@/lib/api";
@@ -9,8 +10,10 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   sources?: SourceRef[];
   isStreaming?: boolean;
+  isThinking?: boolean;
 }
 
 interface ChatMessageProps {
@@ -19,6 +22,9 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const hasThinking =
+    Boolean(message.thinking?.trim()) || Boolean(message.isThinking);
+  const [thinkingOpen, setThinkingOpen] = useState(true);
 
   return (
     <div
@@ -47,7 +53,36 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {isUser ? (
           <p className="text-sm leading-relaxed text-foreground">{message.content}</p>
         ) : (
-          <MarkdownMessage content={message.content || " "} />
+          <>
+            {hasThinking && (
+              <div className="rounded border border-terminal-border/80 bg-terminal-panel/50">
+                <button
+                  type="button"
+                  onClick={() => setThinkingOpen((o) => !o)}
+                  className="flex w-full items-center gap-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-terminal-amber/90 hover:text-terminal-amber"
+                >
+                  {thinkingOpen ? (
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  )}
+                  思考过程
+                  {message.isThinking && (
+                    <span className="inline-block h-3 w-1.5 animate-blink bg-terminal-amber" />
+                  )}
+                </button>
+                {thinkingOpen && (
+                  <div className="border-t border-terminal-border/60 px-3 py-2">
+                    <MarkdownMessage
+                      content={message.thinking?.trim() || "正在检索语料并规划分析路径…"}
+                      className="text-xs text-muted-foreground [&_p]:leading-relaxed"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <MarkdownMessage content={message.content || " "} />
+          </>
         )}
         {!isUser && message.sources && message.sources.length > 0 && (
           <div className="flex flex-wrap gap-2 pt-1">
