@@ -15,6 +15,34 @@ def ensure_vector_store_ready(client: Client) -> None:
     client.table("financial_documents").select("id").limit(1).execute()
 
 
+def count_documents(client: Client) -> int:
+    response = (
+        client.table("financial_documents")
+        .select("id", count="exact")
+        .limit(0)
+        .execute()
+    )
+    return int(response.count or 0)
+
+
+def clear_documents(client: Client) -> None:
+    """Remove all rows from financial_documents (demo re-ingest)."""
+    client.table("financial_documents").delete().gte(
+        "created_at", "1970-01-01T00:00:00+00:00"
+    ).execute()
+
+
+def list_document_summaries(client: Client, limit: int = 8) -> list[dict[str, Any]]:
+    response = (
+        client.table("financial_documents")
+        .select("content", "metadata")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return response.data or []
+
+
 def match_documents(
     client: Client,
     query_embedding: list[float],

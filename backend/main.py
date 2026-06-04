@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
@@ -62,6 +63,11 @@ class ResetRequest(BaseModel):
     session_id: str = "default"
 
 
+class SuggestionsRequest(BaseModel):
+    recent_queries: list[str] = Field(default_factory=list, max_length=5)
+    count: int = Field(default=4, ge=1, le=6)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "finsight-api"}
@@ -111,6 +117,23 @@ async def ingest(request: IngestRequest):
         return {"ingested_nodes": count, "status": "success"}
     except Exception as exc:
         logger.exception("Ingest error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/suggestions")
+async def suggestions(request: SuggestionsRequest):
+    if agent is None:
+        raise HTTPException(status_code=503, detail="Agent not initialized")
+
+    try:
+        items = await asyncio.to_thread(
+            agent.generate_suggestions,
+            request.recent_queries,
+            request.count,
+        )
+        return {"suggestions": items}
+    except Exception as exc:
+        logger.exception("Suggestions error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

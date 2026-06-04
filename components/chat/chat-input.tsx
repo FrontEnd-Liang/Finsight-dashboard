@@ -1,17 +1,22 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ArrowUp, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, RefreshCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { fetchSuggestions } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
-  disabled?: boolean;
+  isStreaming?: boolean;
+  onStop?: () => void;
   placeholder?: string;
+  recentQueries?: string[];
+  /** Increment to refetch suggestions (e.g. after corpus ingest). */
+  refreshKey?: number;
 }
 
-const SUGGESTIONS = [
+const FALLBACK_SUGGESTIONS = [
   "对比 AAPL 与 MSFT 营收增速及利润率",
   "汇总 NVDA 数据中心业务前景（基于公告/财报）",
   "最新 FOMC 对 2025 年降息路径释放何种信号？",
@@ -20,18 +25,57 @@ const SUGGESTIONS = [
 
 export function ChatInput({
   onSend,
-  disabled,
+  isStreaming = false,
+  onStop,
   placeholder = "询问财报、宏观或个股研究…",
+  recentQueries = [],
+  refreshKey = 0,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadSuggestions = (queries: string[]) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setLoadingSuggestions(true);
+
+    fetchSuggestions(queries, controller.signal)
+      .then((items) => {
+        if (items.length > 0) setSuggestions(items);
+      })
+      .catch((err) => {
+        if ((err as Error).name !== "AbortError") {
+          setSuggestions(FALLBACK_SUGGESTIONS);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingSuggestions(false);
+      });
+  };
+
+  useEffect(() => {
+    loadSuggestions(recentQueries);
+    return () => abortRef.current?.abort();
+  }, [refreshKey, recentQueries.join("|")]);
 
   const submit = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || isStreaming) return;
     onSend(trimmed);
     setValue("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
+  };
+
+  const handlePrimaryAction = () => {
+    if (isStreaming) {
+      onStop?.();
+      return;
+    }
+    submit();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -43,18 +87,36 @@ export function ChatInput({
 
   return (
     <div className="border-t border-terminal-border bg-terminal-panel/80 p-4">
-      <div className="mb-3 flex flex-wrap gap-2">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            disabled={disabled}
-            onClick={() => onSend(s)}
-            className="rounded border border-terminal-border/80 bg-background/50 px-2 py-1 font-mono text-[10px] text-muted-foreground transition hover:border-terminal-green/50 hover:text-terminal-green disabled:opacity-40"
-          >
-            {s}
-          </button>
-        ))}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {loadingSuggestions
+          ? FALLBACK_SUGGESTIONS.map((s) => (
+              <span
+                key={s}
+                className="h-6 w-40 animate-pulse rounded border border-terminal-border/50 bg-background/30"
+              />
+            ))
+          : suggestions.map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={isStreaming}
+                onClick={() => onSend(s)}
+                className="rounded border border-terminal-border/80 bg-background/50 px-2 py-1 font-mono text-[10px] text-muted-foreground transition hover:border-terminal-green/50 hover:text-terminal-green disabled:opacity-40"
+              >
+                {s}
+              </button>
+            ))}
+        <button
+          type="button"
+          disabled={isStreaming || loadingSuggestions}
+          onClick={() => loadSuggestions(recentQueries)}
+          title="刷新推荐问题"
+          className="rounded border border-terminal-border/80 p-1 text-muted-foreground transition hover:border-terminal-green/50 hover:text-terminal-green disabled:opacity-40"
+        >
+          <RefreshCw
+            className={cn("h-3 w-3", loadingSuggestions && "animate-spin")}
+          />
+        </button>
       </div>
       <div className="relative flex items-end gap-2 rounded-lg border border-terminal-border bg-background/60 p-2 focus-within:border-terminal-green/50">
         <textarea
@@ -66,7 +128,6 @@ export function ChatInput({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
           }}
           onKeyDown={handleKeyDown}
-          disabled={disabled}
           rows={1}
           placeholder={placeholder}
           className={cn(
@@ -78,12 +139,16 @@ export function ChatInput({
           type="button"
           size="icon"
           variant="terminal"
-          disabled={disabled || !value.trim()}
-          onClick={submit}
-          className="shrink-0"
+          disabled={!isStreaming && !value.trim()}
+          onClick={handlePrimaryAction}
+          title={isStreaming ? "停止生成" : "发送"}
+          className={cn(
+            "shrink-0",
+            isStreaming && "border-terminal-amber/50 text-terminal-amber hover:bg-terminal-amber/10"
+          )}
         >
-          {disabled ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+          {isStreaming ? (
+            <Square className="h-3.5 w-3.5 fill-current" />
           ) : (
             <ArrowUp className="h-4 w-4" />
           )}

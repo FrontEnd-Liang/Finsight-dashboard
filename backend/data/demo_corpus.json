@@ -1,0 +1,87 @@
+{
+  "version": "1.0",
+  "name": "finsight-demo-corpus",
+  "description": "演示用财报/宏观公告片段，供 Supabase pgvector 检索与 RAG 问答",
+  "documents": [
+    {
+      "content": "Apple Inc. (AAPL) FY2024: Revenue $391.0B (+2.0% YoY), Gross Margin 46.2%, Operating Margin 31.5%, EPS $6.42. Services revenue reached $96.2B (+13% YoY). iPhone revenue $201.2B. Cash and equivalents $65.2B. R&D spend $31.3B. Management highlights India manufacturing ramp and Vision Pro ecosystem investments.",
+      "metadata": {
+        "ticker": "AAPL",
+        "sector": "Technology",
+        "source": "10-K FY2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "Microsoft Corporation (MSFT) FY2024: Revenue $245.1B (+16% YoY), Cloud (Azure + other) $137.0B (+23% YoY). Operating income $109.4B. Net income $88.1B. Commercial cloud gross margin 72%. Copilot adoption cited across Enterprise segment. CapEx elevated for AI datacenter build-out.",
+      "metadata": {
+        "ticker": "MSFT",
+        "sector": "Technology",
+        "source": "10-K FY2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "NVIDIA Corporation (NVDA) Q3 FY2025: Revenue $35.1B (+94% YoY), Data Center revenue $30.8B. Gross margin 74.6%. Blackwell architecture demand exceeds supply. H200 shipments ramping; inference workload mix increasing. Networking revenue growth tied to AI cluster deployments.",
+      "metadata": {
+        "ticker": "NVDA",
+        "sector": "Semiconductors",
+        "source": "Earnings Call Q3 FY2025",
+        "type": "earnings",
+        "fiscal_year": 2025
+      }
+    },
+    {
+      "content": "Alphabet Inc. (GOOGL) FY2024: Consolidated revenue $350.0B (+14% YoY). Google Cloud revenue $43.2B (+30% YoY), operating margin improving. Search ads resilient; YouTube ads +12%. CapEx $52.5B focused on TPU/GPU capacity. Antitrust remedies monitoring ongoing.",
+      "metadata": {
+        "ticker": "GOOGL",
+        "sector": "Technology",
+        "source": "10-K FY2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "Amazon.com Inc. (AMZN) FY2024: Net sales $638.0B (+11% YoY). AWS revenue $117.0B (+19% YoY), operating margin expansion. North America retail operating income improved on logistics efficiency. Advertising services $56.2B (+24% YoY). Free cash flow strengthened post cost discipline.",
+      "metadata": {
+        "ticker": "AMZN",
+        "sector": "Technology",
+        "source": "10-K FY2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "Federal Reserve FOMC Summary (Dec 2024): Policy rate held at 4.25%-4.50%. Inflation progress noted but remains above 2% target. Labor market cooling with unemployment 4.2%. Dot plot implies two 25bp cuts in 2025. QT pace unchanged; balance sheet normalization ongoing. Risk assessment cites geopolitical energy shocks.",
+      "metadata": {
+        "ticker": "MACRO",
+        "sector": "Macro",
+        "source": "FOMC Statement",
+        "type": "macro",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "JPMorgan Chase (JPM) Q4 2024: Net revenue $42.5B, Net income $14.0B. ROTCE 22%. Investment Banking fees +12% QoQ. NII $23.1B; credit provisions $2.8B. CET1 ratio 15.8%. Guidance: mid-single-digit NII growth for 2025. Consumer credit delinquencies stable vs prior quarter.",
+      "metadata": {
+        "ticker": "JPM",
+        "sector": "Financials",
+        "source": "Earnings Release Q4 2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    },
+    {
+      "content": "Tesla Inc. (TSLA) Q4 2024: Revenue $25.7B, Automotive gross margin 18.2% ex-credits. Deliveries 495k units in quarter. Energy storage deployments +244% YoY. FSD supervised rollout in additional cities. Capex guided higher for AI training and next-gen platform tooling.",
+      "metadata": {
+        "ticker": "TSLA",
+        "sector": "Consumer Discretionary",
+        "source": "Shareholder Letter Q4 2024",
+        "type": "earnings",
+        "fiscal_year": 2024
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -15,7 +16,22 @@ from supabase import Client
 from config import Settings
 from embeddings import create_embed_model
 from llm import create_llm
-from database import insert_document, match_documents, nodes_from_matches
+from corpus import get_demo_documents
+from database import (
+    clear_documents,
+    count_documents,
+    insert_document,
+    list_document_summaries,
+    match_documents,
+    nodes_from_matches,
+)
+
+DEFAULT_SUGGESTIONS = [
+    "对比 AAPL 与 MSFT 营收增速及利润率",
+    "汇总 NVDA 数据中心业务前景（基于公告/财报）",
+    "最新 FOMC 对 2025 年降息路径释放何种信号？",
+    "生成超大盘科技 KPI 对比 Markdown 表格",
+]
 
 SYSTEM_PROMPT = """You are Finsight, an expert financial research analyst AI.
 You analyze equities, macro trends, earnings, and regulatory filings using retrieved context.
@@ -207,9 +223,97 @@ class FinancialResearchAgent:
         done_payload = json.dumps({"type": "done", "sources": sources})
         yield f"data: {done_payload}\n\n"
 
-    def ingest_documents(self, documents: list[dict[str, Any]]) -> int:
+    def _corpus_summary_lines(self) -> list[str]:
+        rows = list_document_summaries(self.supabase_client, limit=8)
+        if rows:
+            lines: list[str] = []
+            for row in rows:
+                meta = row.get("metadata") or {}
+                ticker = meta.get("ticker") or "—"
+                source = meta.get("source") or "—"
+                doc_type = meta.get("type") or "—"
+                snippet = (row.get("content") or "").replace("\n", " ")[:100]
+                lines.append(f"- {ticker} · {source} · {doc_type} — {snippet}")
+            return lines
+
+        try:
+            demo_docs = get_demo_documents()
+        except FileNotFoundError:
+            demo_docs = []
+        return [
+            f"- {doc['metadata'].get('ticker', '—')} · "
+            f"{doc['metadata'].get('source', '—')} · "
+            f"{doc['metadata'].get('type', '—')}"
+            for doc in demo_docs
+        ]
+
+    def _parse_suggestions_json(self, text: str, count: int) -> list[str] | None:
+        cleaned = text.strip()
+        fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", cleaned)
+        if fence:
+            cleaned = fence.group(1).strip()
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, list):
+            return None
+        items = [str(item).strip() for item in data if str(item).strip()]
+        if len(items) < count:
+            return None
+        return items[:count]
+
+    def generate_suggestions(
+        self,
+        recent_queries: list[str] | None = None,
+        count: int = 4,
+    ) -> list[str]:
+        corpus_lines = self._corpus_summary_lines()
+        recent_block = ""
+        if recent_queries:
+            recent_block = (
+                "\n用户最近提问（请避开重复、可延伸新角度）：\n"
+                + "\n".join(f"- {q.strip()}" for q in recent_queries[-3:] if q.strip())
+            )
+
+        prompt = (
+            "你是 Finsight 金融研究终端。根据当前知识库与近期提问，"
+            f"生成 {count} 条中文推荐研究问题，供分析师一键点击。\n"
+            "要求：\n"
+            "- 每条 18～45 字，具体可执行（对比、汇总、表格、宏观解读等）\n"
+            "- 覆盖知识库中不同 ticker/主题，优先引用库内已有标的\n"
+            "- 仅输出 JSON 字符串数组，不要 markdown 或其它说明\n\n"
+            f"知识库概况：\n"
+            + ("\n".join(corpus_lines) if corpus_lines else "（语料库为空，生成通用金融研究问题）")
+            + recent_block
+        )
+
+        llm = LlamaSettings.llm
+        response = llm.complete(prompt)
+        parsed = self._parse_suggestions_json(response.text, count)
+        return parsed if parsed else DEFAULT_SUGGESTIONS[:count]
+
+    def get_corpus_status(self) -> dict[str, Any]:
+        from corpus import get_demo_corpus_meta
+
+        stored = count_documents(self.supabase_client)
+        demo_meta = get_demo_corpus_meta()
+        return {
+            "stored_count": stored,
+            "demo_file_count": demo_meta["document_count"],
+            "demo_tickers": demo_meta["tickers"],
+            "demo_file": demo_meta["file"],
+            "is_loaded": stored > 0,
+        }
+
+    def ingest_documents(
+        self, documents: list[dict[str, Any]], *, replace: bool = False
+    ) -> int:
         if not documents:
             return 0
+
+        if replace:
+            clear_documents(self.supabase_client)
 
         embed_model: BaseEmbedding = LlamaSettings.embed_model  # type: ignore[assignment]
         ingested = 0

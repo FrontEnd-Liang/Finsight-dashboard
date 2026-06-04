@@ -25,6 +25,7 @@ export default function HomePage() {
   const [isIngesting, setIsIngesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState("就绪");
+  const [suggestionRefreshKey, setSuggestionRefreshKey] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -163,7 +164,25 @@ export default function HomePage() {
         }
       }
     } catch (err) {
-      if ((err as Error).name === "AbortError") return;
+      if ((err as Error).name === "AbortError") {
+        setStatusLine("已停止");
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  isStreaming: false,
+                  isThinking: false,
+                  content:
+                    m.content?.trim() ||
+                    m.thinking?.trim() ||
+                    "（已停止生成）",
+                }
+              : m
+          )
+        );
+        return;
+      }
       const message = err instanceof Error ? err.message : "流式传输失败";
       setError(message);
       setStatusLine("错误");
@@ -183,6 +202,10 @@ export default function HomePage() {
       setIsStreaming(false);
     }
   };
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleNewSession = () => {
     abortRef.current?.abort();
@@ -247,6 +270,7 @@ export default function HomePage() {
     setStatusLine("导入演示语料库…");
     try {
       const result = await ingestDemoData();
+      setSuggestionRefreshKey((k) => k + 1);
       setStatusLine(`已导入 ${result.ingested_nodes} 份文档`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "导入失败";
@@ -311,7 +335,16 @@ export default function HomePage() {
           </div>
         </ScrollArea>
 
-        <ChatInput onSend={handleSend} disabled={isStreaming} />
+        <ChatInput
+          onSend={handleSend}
+          isStreaming={isStreaming}
+          onStop={handleStop}
+          refreshKey={suggestionRefreshKey}
+          recentQueries={messages
+            .filter((m) => m.role === "user")
+            .map((m) => m.content)
+            .slice(-3)}
+        />
       </main>
     </div>
   );
