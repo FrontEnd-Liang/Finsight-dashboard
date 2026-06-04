@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+backend/venv/
+backend/__pycache__/
+backend/.env
+
+# next.js
+.next/
+out/
+
+# misc
+.DS_Store
+*.pem
+.env
+.env.local
+.env*.local
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+
+# typescript
+*.tsbuildinfo
+
+# python
+*.pyc
+.pytest_cache/
+.venv/

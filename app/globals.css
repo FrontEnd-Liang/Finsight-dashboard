@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 4%;
+    --foreground: 210 20% 92%;
+    --card: 222 40% 6%;
+    --card-foreground: 210 20% 92%;
+    --primary: 152 100% 50%;
+    --primary-foreground: 222 47% 4%;
+    --secondary: 217 25% 12%;
+    --secondary-foreground: 210 20% 85%;
+    --muted: 217 25% 14%;
+    --muted-foreground: 215 15% 55%;
+    --accent: 217 25% 16%;
+    --accent-foreground: 210 20% 92%;
+    --border: 217 30% 18%;
+    --input: 217 30% 18%;
+    --ring: 152 80% 45%;
+    --radius: 0.375rem;
+    --font-sans: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", Consolas, monospace;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 255, 136, 0.06), transparent),
+      linear-gradient(to bottom, hsl(222 47% 4%), hsl(222 47% 3%));
+  }
+
+  ::selection {
+    background: rgba(0, 255, 136, 0.25);
+    color: #fff;
+  }
+}
+
+/* Terminal scanline overlay */
+.terminal-grid {
+  background-image:
+    linear-gradient(rgba(26, 35, 50, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 35, 50, 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
