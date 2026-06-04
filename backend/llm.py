@@ -50,5 +50,5 @@ def create_llm(settings: Settings) -> OpenAICompatibleLLM:
         api_base=settings.deepseek_base_url,
         context_window=settings.deepseek_context_window,
         temperature=0.2,
-        max_tokens=4096,
+        max_tokens=settings.chat_max_tokens,
     )

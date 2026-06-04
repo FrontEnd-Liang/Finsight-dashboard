@@ -11,8 +11,6 @@ except ImportError:  # pragma: no cover
     ZoneInfo = None  # type: ignore[misc, assignment]
 
 from llama_index.core import Settings as LlamaSettings
-from llama_index.core.chat_engine import CondensePlusContextChatEngine
-from llama_index.core.memory import ChatMemoryBuffer
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -34,21 +32,25 @@ from database import (
 DEFAULT_SUGGESTIONS = [
     "对比 AAPL 与 MSFT 营收增速及利润率",
     "汇总 NVDA 数据中心业务前景（基于公告/财报）",
-    "最新 FOMC 对 2025 年降息路径释放何种信号？",
+    "最新 FOMC 对 2026 年下半年利率路径释放何种信号？",
     "生成超大盘科技 KPI 对比 Markdown 表格",
 ]
 
 SYSTEM_PROMPT_TEMPLATE = """You are Finsight, an expert financial research analyst AI.
 You analyze equities, macro trends, earnings, and regulatory filings using retrieved context when relevant.
 
-Today (Asia/Shanghai): {today}
+Today (calendar, Asia/Shanghai): {today}
 
 Rules:
-- For financial questions: ground answers in provided context; cite tickers and figures when available.
+- Retrieved excerpts are from the **ingested knowledge base only** (demo filings), not live market data.
+- Each excerpt has a **fiscal/report period** in its source label (e.g. FY2025, Q1 2026). Cite that period explicitly; do not call it "today's data" unless period_end matches the calendar year of today.
+- If the user asks for "latest" figures but context only has older fiscal periods, state the newest period available in context and what newer filing would be needed.
+- For financial questions: ground answers in provided context; cite tickers, figures, and source period when available.
 - If context is insufficient for a financial question, say what is missing and suggest data to ingest.
 - For general questions (date, time, greetings, product help): answer directly in Chinese; use the date above when asked.
 - Use markdown tables for comparative metrics (revenue, margins, P/E, YoY growth).
 - Be concise, institutional-grade; avoid speculation beyond the evidence on market topics.
+- Prefer 200–500 Chinese characters unless the user asks for a long report or a comparison table.
 """
 
 
@@ -108,7 +110,6 @@ class FinancialResearchAgent:
     def __init__(self, settings: Settings, supabase_client: Client) -> None:
         self.settings = settings
         self.supabase_client = supabase_client
-        self._chat_engines: dict[str, CondensePlusContextChatEngine] = {}
         self._retriever: SupabaseFinancialRetriever | None = None
         self._configure_llama()
 
@@ -123,22 +124,27 @@ class FinancialResearchAgent:
             self._retriever = SupabaseFinancialRetriever(
                 client=self.supabase_client,
                 embed_model=LlamaSettings.embed_model,  # type: ignore[arg-type]
-                similarity_top_k=5,
+                similarity_top_k=self.settings.rag_top_k,
             )
         return self._retriever
 
-    def _get_chat_engine(self, session_id: str) -> CondensePlusContextChatEngine:
-        if session_id not in self._chat_engines:
-            memory = ChatMemoryBuffer.from_defaults(token_limit=3900)
-            retriever = self._get_retriever()
-            self._chat_engines[session_id] = CondensePlusContextChatEngine.from_defaults(
-                retriever=retriever,
-                llm=LlamaSettings.llm,
-                memory=memory,
-                system_prompt=build_system_prompt(),
-                verbose=False,
-            )
-        return self._chat_engines[session_id]
+    def _build_context_block(
+        self, nodes: list[NodeWithScore], max_nodes: int | None = None
+    ) -> str:
+        if not nodes:
+            return "（无检索上下文）"
+        limit = max_nodes or self.settings.rag_top_k
+        lines: list[str] = []
+        for node in nodes[:limit]:
+            meta = node.metadata or {}
+            content = (node.get_content() or "")[:600]
+            period = meta.get("source") or meta.get("period_end") or "—"
+            fy = meta.get("fiscal_year")
+            header = f"### {meta.get('ticker', '?')} — {period}"
+            if fy is not None:
+                header += f" (fiscal_year={fy})"
+            lines.append(f"{header}\n{content}")
+        return "\n\n".join(lines)
 
     def _retrieve_for_query(self, query: str) -> list[NodeWithScore]:
         retriever = self._get_retriever()
@@ -158,17 +164,26 @@ class FinancialResearchAgent:
             )
             return "\n".join(lines)
 
-        lines.append(f"- 命中 {len(nodes)} 条相关记录：")
+        lines.append(
+            f"- 命中 {len(nodes)} 条（语料为已入库披露片段，非实时行情；"
+            f"以下按语义相似度排序，未必等于日历意义上的「最新」）"
+        )
         for i, node in enumerate(nodes[:5], start=1):
             meta = node.metadata or {}
             ticker = meta.get("ticker") or "—"
             source = meta.get("source") or "—"
+            fy = meta.get("fiscal_year")
+            period_tag = f"FY{fy}" if fy is not None else ""
             score = round(float(node.score or 0), 4)
             snippet = (node.get_content() or "").replace("\n", " ")[:120]
+            label = f"{source} {period_tag}".strip()
             lines.append(
-                f"  {i}. `{ticker}` · {source} · 相似度 {score} — {snippet}…"
+                f"  {i}. `{ticker}` · {label} · 相似度 {score} — {snippet}…"
             )
-        lines.extend(["", "**分析规划：**"])
+        lines.append(
+            "",
+            "**说明：** 若需 2026 年最新季报，请确认侧边栏已用最新 `demo_corpus.json` 重新注入语料。",
+        )
         return "\n".join(lines)
 
     def _stream_fallback_tokens(self, query: str) -> Iterator[str]:
@@ -189,25 +204,18 @@ class FinancialResearchAgent:
             if delta:
                 yield delta
 
-    def _stream_thinking_tokens(self, query: str, nodes: list[NodeWithScore]):
+    def _stream_answer_tokens(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> Iterator[str]:
+        """Single LLM call with pre-retrieved context (no condense / extra thinking pass)."""
         llm = LlamaSettings.llm
-        context_lines: list[str] = []
-        for node in nodes[:3]:
-            meta = node.metadata or {}
-            context_lines.append(
-                f"- {meta.get('ticker', '?')} ({meta.get('source', '?')}): "
-                f"{(node.get_content() or '')[:280]}"
-            )
-        context_block = (
-            "\n".join(context_lines) if context_lines else "（无检索上下文）"
-        )
+        context = self._build_context_block(nodes)
         prompt = (
-            "你是 Finsight 金融研究助手。根据用户问题与检索片段，"
-            "用中文写出简明的内部分析思路（3～5 条要点，可用 Markdown 列表），"
-            "说明将如何论证、对比哪些指标、需注意哪些风险。"
-            "不要写最终结论或完整报告，仅输出思考过程。\n\n"
-            f"用户问题：{query.strip()}\n\n"
-            f"检索片段：\n{context_block}"
+            f"{build_system_prompt()}\n\n"
+            f"## Retrieved context\n{context}\n\n"
+            f"## User question\n{query.strip()}\n\n"
+            "用中文直接回答。引用数字时必须写明对应财报/公告期间（如 FY2025、Q1 2026）；"
+            "勿把语料中的旧期间说成「当前最新」。若证据不足请说明缺口。避免冗长铺垫。"
         )
         response = llm.stream_complete(prompt)
         for chunk in response:
@@ -218,82 +226,50 @@ class FinancialResearchAgent:
     async def stream_chat(
         self, query: str, session_id: str = "default"
     ) -> AsyncGenerator[str, None]:
+        _ = session_id  # reserved for future multi-turn memory
         nodes = await asyncio.to_thread(self._retrieve_for_query, query)
         retrieval_thinking = self._format_retrieval_thinking(query, nodes)
         payload = json.dumps({"type": "thinking", "content": retrieval_thinking})
         yield f"data: {payload}\n\n"
 
         loop = asyncio.get_running_loop()
-        thinking_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        token_queue: asyncio.Queue[str | None] = asyncio.Queue()
 
-        def produce_thinking_tokens() -> None:
+        def produce_answer_tokens() -> None:
             try:
-                for token in self._stream_thinking_tokens(query, nodes):
-                    loop.call_soon_threadsafe(thinking_queue.put_nowait, token)
+                stream_fn = (
+                    self._stream_answer_tokens
+                    if nodes
+                    else self._stream_fallback_tokens
+                )
+                for token in stream_fn(query, nodes) if nodes else stream_fn(query):
+                    loop.call_soon_threadsafe(token_queue.put_nowait, token)
             finally:
-                loop.call_soon_threadsafe(thinking_queue.put_nowait, None)
+                loop.call_soon_threadsafe(token_queue.put_nowait, None)
 
-        producer = asyncio.to_thread(produce_thinking_tokens)
-        producer_task = asyncio.create_task(producer)
+        producer_task = asyncio.create_task(asyncio.to_thread(produce_answer_tokens))
 
         while True:
-            token = await thinking_queue.get()
+            token = await token_queue.get()
             if token is None:
                 break
-            payload = json.dumps({"type": "thinking", "content": token})
+            if is_empty_llm_response(token):
+                continue
+            payload = json.dumps({"type": "token", "content": token})
             yield f"data: {payload}\n\n"
 
         await producer_task
 
-        def run_main_answer() -> str:
-            if not nodes:
-                return ""
-
-            chat_engine = self._get_chat_engine(session_id)
-            streaming_response = chat_engine.stream_chat(query)
-            parts = [t for t in streaming_response.response_gen if t]
-            text = "".join(parts)
-
-            if is_empty_llm_response(text):
-                resp_obj = getattr(streaming_response, "response", None)
-                if resp_obj is not None:
-                    alt = str(getattr(resp_obj, "response", resp_obj) or "")
-                    if not is_empty_llm_response(alt):
-                        text = alt
-            return text
-
-        main_text = await asyncio.to_thread(run_main_answer)
-
-        if is_empty_llm_response(main_text):
-
-            def run_fallback():
-                return list(self._stream_fallback_tokens(query))
-
-            fallback_tokens = await asyncio.to_thread(run_fallback)
-            stream_text = "".join(fallback_tokens)
-        else:
-            stream_text = main_text
-
-        chunk_size = 16
-        for i in range(0, len(stream_text), chunk_size):
-            chunk = stream_text[i : i + chunk_size]
-            payload = json.dumps({"type": "token", "content": chunk})
-            yield f"data: {payload}\n\n"
-
-        streaming_response = None
-
         sources = []
-        rag_nodes = nodes[:5]
-        if rag_nodes:
-            for node in rag_nodes:
-                meta = node.metadata or {}
-                sources.append(
-                    {
-                        "ticker": meta.get("ticker"),
-                        "source": meta.get("source"),
-                        "score": round(float(node.score or 0), 4),
-                    }
-                )
+        for node in nodes[: self.settings.rag_top_k]:
+            meta = node.metadata or {}
+            sources.append(
+                {
+                    "ticker": meta.get("ticker"),
+                    "source": meta.get("source"),
+                    "score": round(float(node.score or 0), 4),
+                }
+            )
 
         done_payload = json.dumps({"type": "done", "sources": sources})
         yield f"data: {done_payload}\n\n"
@@ -360,7 +336,7 @@ class FinancialResearchAgent:
         elif equities:
             pool.append(f"汇总 {equities[0]} 最新财报要点与同比变化")
         if has_macro:
-            pool.append("最新 FOMC 对 2025 年降息路径释放何种信号？")
+            pool.append("最新 FOMC 对 2026 年下半年利率路径释放何种信号？")
         if len(equities) >= 3:
             sample = "、".join(equities[:4])
             pool.append(f"生成 {sample} 等标的 KPI 对比 Markdown 表格")
@@ -462,4 +438,4 @@ class FinancialResearchAgent:
         return ingested
 
     def reset_session(self, session_id: str) -> None:
-        self._chat_engines.pop(session_id, None)
+        _ = session_id
