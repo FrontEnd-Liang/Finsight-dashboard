@@ -11,9 +11,17 @@ interface ChatInputProps {
   isStreaming?: boolean;
   onStop?: () => void;
   placeholder?: string;
+  sessionId?: string;
+  /** 仅手动刷新时使用，避免随每条消息重新请求 */
   recentQueries?: string[];
-  /** Increment to refetch suggestions (e.g. after corpus ingest). */
+  /** 语料库导入后递增，触发重新拉取推荐问题 */
   refreshKey?: number;
+}
+
+const SUGGESTIONS_CACHE_PREFIX = "finsight_suggestions_";
+
+function suggestionsCacheKey(sessionId: string, refreshKey: number) {
+  return `${SUGGESTIONS_CACHE_PREFIX}${sessionId}_${refreshKey}`;
 }
 
 const FALLBACK_SUGGESTIONS = [
@@ -28,16 +36,36 @@ export function ChatInput({
   isStreaming = false,
   onStop,
   placeholder = "询问财报、宏观或个股研究…",
+  sessionId = "default",
   recentQueries = [],
   refreshKey = 0,
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>(FALLBACK_SUGGESTIONS);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(true);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const recentQueriesRef = useRef(recentQueries);
+  recentQueriesRef.current = recentQueries;
 
-  const loadSuggestions = (queries: string[]) => {
+  const loadSuggestions = (queries: string[], options?: { force?: boolean }) => {
+    const cacheKey = suggestionsCacheKey(sessionId, refreshKey);
+    if (!options?.force) {
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (raw) {
+          const cached = JSON.parse(raw) as string[];
+          if (cached.length > 0) {
+            setSuggestions(cached);
+            setLoadingSuggestions(false);
+            return;
+          }
+        }
+      } catch {
+        /* ignore cache parse errors */
+      }
+    }
+
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -45,7 +73,14 @@ export function ChatInput({
 
     fetchSuggestions(queries, controller.signal)
       .then((items) => {
-        if (items.length > 0) setSuggestions(items);
+        if (items.length > 0) {
+          setSuggestions(items);
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify(items));
+          } catch {
+            /* quota exceeded etc. */
+          }
+        }
       })
       .catch((err) => {
         if ((err as Error).name !== "AbortError") {
@@ -58,9 +93,10 @@ export function ChatInput({
   };
 
   useEffect(() => {
-    loadSuggestions(recentQueries);
+    loadSuggestions([]);
     return () => abortRef.current?.abort();
-  }, [refreshKey, recentQueries.join("|")]);
+    // 仅在进入页面、切换会话或语料导入后加载，不随每条消息变化
+  }, [sessionId, refreshKey]);
 
   const submit = () => {
     const trimmed = value.trim();
@@ -109,7 +145,7 @@ export function ChatInput({
         <button
           type="button"
           disabled={isStreaming || loadingSuggestions}
-          onClick={() => loadSuggestions(recentQueries)}
+          onClick={() => loadSuggestions(recentQueriesRef.current, { force: true })}
           title="刷新推荐问题"
           className="rounded border border-terminal-border/80 p-1 text-muted-foreground transition hover:border-terminal-green/50 hover:text-terminal-green disabled:opacity-40"
         >

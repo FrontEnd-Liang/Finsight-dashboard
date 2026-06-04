@@ -387,6 +387,7 @@ export default function HomePage() {
           onSend={handleSend}
           isStreaming={isStreaming}
           onStop={handleStop}
+          sessionId={activeSessionId || "default"}
           refreshKey={suggestionRefreshKey}
           recentQueries={messages
             .filter((m) => m.role === "user")
