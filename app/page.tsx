@@ -153,6 +153,7 @@ export default function HomePage() {
             )
           );
         } else if (event.type === "token") {
+          if (event.content === "Empty Response") continue;
           accumulated += event.content;
           setStatusLine("生成回答…");
           setMessages((prev) =>

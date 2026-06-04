@@ -1,13 +1,18 @@
 import asyncio
 import json
 import re
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover
+    ZoneInfo = None  # type: ignore[misc, assignment]
 
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core.chat_engine import CondensePlusContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.postprocessor import SimilarityPostprocessor
 from llama_index.core.retrievers import BaseRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -33,15 +38,41 @@ DEFAULT_SUGGESTIONS = [
     "生成超大盘科技 KPI 对比 Markdown 表格",
 ]
 
-SYSTEM_PROMPT = """You are Finsight, an expert financial research analyst AI.
-You analyze equities, macro trends, earnings, and regulatory filings using retrieved context.
+SYSTEM_PROMPT_TEMPLATE = """You are Finsight, an expert financial research analyst AI.
+You analyze equities, macro trends, earnings, and regulatory filings using retrieved context when relevant.
+
+Today (Asia/Shanghai): {today}
 
 Rules:
-- Ground answers in the provided context; cite tickers and figures when available.
-- If context is insufficient, state what is missing and suggest data to ingest.
+- For financial questions: ground answers in provided context; cite tickers and figures when available.
+- If context is insufficient for a financial question, say what is missing and suggest data to ingest.
+- For general questions (date, time, greetings, product help): answer directly in Chinese; use the date above when asked.
 - Use markdown tables for comparative metrics (revenue, margins, P/E, YoY growth).
-- Be concise, institutional-grade, and avoid speculation beyond the evidence.
+- Be concise, institutional-grade; avoid speculation beyond the evidence on market topics.
 """
+
+
+def _now_shanghai() -> datetime:
+    if ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo("Asia/Shanghai"))
+        except Exception:
+            pass
+    return datetime.now(timezone(timedelta(hours=8)))
+
+
+def build_system_prompt() -> str:
+    now = _now_shanghai()
+    today = now.strftime("%Y年%m月%d日（%A）")
+    return SYSTEM_PROMPT_TEMPLATE.format(today=today)
+
+
+EMPTY_RESPONSE_MARKER = "Empty Response"
+
+
+def is_empty_llm_response(text: str) -> bool:
+    stripped = text.strip()
+    return not stripped or stripped == EMPTY_RESPONSE_MARKER
 
 
 class SupabaseFinancialRetriever(BaseRetriever):
@@ -104,8 +135,7 @@ class FinancialResearchAgent:
                 retriever=retriever,
                 llm=LlamaSettings.llm,
                 memory=memory,
-                system_prompt=SYSTEM_PROMPT,
-                node_postprocessors=[SimilarityPostprocessor(similarity_cutoff=0.55)],
+                system_prompt=build_system_prompt(),
                 verbose=False,
             )
         return self._chat_engines[session_id]
@@ -140,6 +170,24 @@ class FinancialResearchAgent:
             )
         lines.extend(["", "**分析规划：**"])
         return "\n".join(lines)
+
+    def _stream_fallback_tokens(self, query: str) -> Iterator[str]:
+        """Direct LLM answer when RAG returns no usable context."""
+        llm = LlamaSettings.llm
+        prompt = (
+            f"{build_system_prompt()}\n\n"
+            f"用户问题：{query.strip()}\n\n"
+            "当前 RAG 未返回可用正文（语料不匹配或合成失败）。请用中文直接回答：\n"
+            "- 日期/时间：使用系统提示中的今日日期；\n"
+            "- 指数/股价涨跌预测：明确说明演示环境无实时行情，不能负责任预测，"
+            "但可列出应关注的宏观变量（FOMC、利率、VIX、龙头财报等）及分析框架；\n"
+            "- 其它：简要说明原因并给出可执行建议。"
+        )
+        response = llm.stream_complete(prompt)
+        for chunk in response:
+            delta = getattr(chunk, "delta", None) or getattr(chunk, "text", None)
+            if delta:
+                yield delta
 
     def _stream_thinking_tokens(self, query: str, nodes: list[NodeWithScore]):
         llm = LlamaSettings.llm
@@ -197,20 +245,47 @@ class FinancialResearchAgent:
 
         await producer_task
 
-        chat_engine = self._get_chat_engine(session_id)
+        def run_main_answer() -> str:
+            if not nodes:
+                return ""
 
-        def run_stream():
-            return chat_engine.stream_chat(query)
+            chat_engine = self._get_chat_engine(session_id)
+            streaming_response = chat_engine.stream_chat(query)
+            parts = [t for t in streaming_response.response_gen if t]
+            text = "".join(parts)
 
-        streaming_response = await asyncio.to_thread(run_stream)
+            if is_empty_llm_response(text):
+                resp_obj = getattr(streaming_response, "response", None)
+                if resp_obj is not None:
+                    alt = str(getattr(resp_obj, "response", resp_obj) or "")
+                    if not is_empty_llm_response(alt):
+                        text = alt
+            return text
 
-        for token in streaming_response.response_gen:
-            payload = json.dumps({"type": "token", "content": token})
+        main_text = await asyncio.to_thread(run_main_answer)
+
+        if is_empty_llm_response(main_text):
+
+            def run_fallback():
+                return list(self._stream_fallback_tokens(query))
+
+            fallback_tokens = await asyncio.to_thread(run_fallback)
+            stream_text = "".join(fallback_tokens)
+        else:
+            stream_text = main_text
+
+        chunk_size = 16
+        for i in range(0, len(stream_text), chunk_size):
+            chunk = stream_text[i : i + chunk_size]
+            payload = json.dumps({"type": "token", "content": chunk})
             yield f"data: {payload}\n\n"
 
+        streaming_response = None
+
         sources = []
-        if streaming_response.source_nodes:
-            for node in streaming_response.source_nodes[:5]:
+        rag_nodes = nodes[:5]
+        if rag_nodes:
+            for node in rag_nodes:
                 meta = node.metadata or {}
                 sources.append(
                     {
