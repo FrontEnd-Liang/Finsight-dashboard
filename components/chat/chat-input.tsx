@@ -14,7 +14,7 @@ interface ChatInputProps {
   sessionId?: string;
   /** 仅手动刷新时使用，避免随每条消息重新请求 */
   recentQueries?: string[];
-  /** 语料库导入后递增，触发重新拉取推荐问题 */
+  /** 资料库同步后递增，触发重新拉取推荐问题 */
   refreshKey?: number;
 }
 

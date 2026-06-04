@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import type { CorpusStatus, IngestDemoResponse } from "@/lib/api";
+import type { CorpusStatus, IngestLibraryResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export interface ChatSession {
@@ -28,8 +28,7 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
   onDeleteSession: (id: string) => void;
-  /** 从 backend/data/demo_corpus.json 注入向量库 */
-  onIngestDemo: () => Promise<IngestDemoResponse>;
+  onSyncLibrary: () => Promise<IngestLibraryResponse>;
   corpusStatus: CorpusStatus | null;
   onRefreshCorpusStatus?: () => void;
   isIngesting?: boolean;
@@ -41,7 +40,7 @@ export function Sidebar({
   onSelectSession,
   onNewSession,
   onDeleteSession,
-  onIngestDemo,
+  onSyncLibrary,
   corpusStatus,
   onRefreshCorpusStatus,
   isIngesting = false,
@@ -51,25 +50,25 @@ export function Sidebar({
     message: string;
   } | null>(null);
 
-  const handleIngestDemo = async () => {
+  const handleSyncLibrary = async () => {
     setIngestFeedback(null);
     try {
-      const result = await onIngestDemo();
-      const tickers = corpusStatus?.demo_tickers?.join(", ") ?? "演示标的";
+      const result = await onSyncLibrary();
+      const tickers = corpusStatus?.library_tickers?.join(", ") ?? "—";
       setIngestFeedback({
         type: "success",
-        message: `已注入 ${result.ingested_nodes} 条（库内共 ${result.stored_count} 条）· ${tickers}`,
+        message: `已同步 ${result.ingested_nodes} 条（库内共 ${result.stored_count} 条）· ${tickers}`,
       });
       onRefreshCorpusStatus?.();
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "语料导入失败，请检查后端与 Supabase";
+        err instanceof Error ? err.message : "资料库同步失败，请检查后端与 Supabase";
       setIngestFeedback({ type: "error", message });
     }
   };
 
   const storedCount = corpusStatus?.stored_count ?? 0;
-  const demoCount = corpusStatus?.demo_file_count ?? 0;
+  const manifestCount = corpusStatus?.library_manifest_count ?? 0;
   const isLoaded = corpusStatus?.is_loaded ?? false;
 
   return (
@@ -100,16 +99,16 @@ export function Sidebar({
         <Button
           variant="outline"
           className="w-full justify-start gap-2 border-terminal-border font-mono text-xs"
-          onClick={handleIngestDemo}
+          onClick={handleSyncLibrary}
           disabled={isIngesting}
-          title="读取 backend/data/demo_corpus.json，向 Supabase 向量表写入演示财报"
+          title="将机构研究资料库写入向量索引，供 RAG 检索"
         >
           {isIngesting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Database className="h-4 w-4" />
           )}
-          {isIngesting ? "导入中…" : "加载演示语料库"}
+          {isIngesting ? "同步中…" : "同步资料库"}
         </Button>
         {ingestFeedback && (
           <p
@@ -181,11 +180,11 @@ export function Sidebar({
 
       <div className="border-t border-terminal-border p-3">
         <div className="rounded border border-terminal-border bg-background/40 p-2 font-mono text-[9px] leading-relaxed text-muted-foreground">
-          <span className="text-terminal-green">语料库</span>
+          <span className="text-terminal-green">资料库</span>
           {corpusStatus ? (
             <>
               {" "}
-              · 已存{" "}
+              · 已索引{" "}
               <span
                 className={
                   isLoaded ? "text-terminal-green" : "text-terminal-amber"
@@ -193,23 +192,23 @@ export function Sidebar({
               >
                 {storedCount}
               </span>{" "}
-              / 演示文件 {demoCount} 条
+              / 清单 {manifestCount} 条
               <br />
-              数据文件:{" "}
+              清单文件:{" "}
               <span className="text-foreground/80">
-                backend/data/{corpusStatus.demo_file}
+                backend/data/{corpusStatus.library_file}
               </span>
               <br />
-              标的: {corpusStatus.demo_tickers.join(" · ") || "—"}
-              {corpusStatus.demo_as_of ? (
+              覆盖标的: {corpusStatus.library_tickers.join(" · ") || "—"}
+              {corpusStatus.library_as_of ? (
                 <>
                   <br />
-                  语料截至:{" "}
+                  披露截至:{" "}
                   <span className="text-foreground/80">
-                    {corpusStatus.demo_as_of}
+                    {corpusStatus.library_as_of}
                   </span>
-                  {corpusStatus.demo_version
-                    ? ` (v${corpusStatus.demo_version})`
+                  {corpusStatus.library_version
+                    ? ` (v${corpusStatus.library_version})`
                     : null}
                 </>
               ) : null}
@@ -217,7 +216,7 @@ export function Sidebar({
                 <>
                   <br />
                   <span className="text-terminal-amber">
-                    演示文件已更新，请重新加载语料
+                    资料清单已更新，请重新同步资料库
                   </span>
                 </>
               ) : null}

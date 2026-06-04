@@ -12,7 +12,7 @@ import { Sidebar, type ChatSession } from "@/components/layout/sidebar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchCorpusStatus,
-  ingestDemoData,
+  ingestLibraryData,
   resetSession,
   streamChat,
   type CorpusStatus,
@@ -302,12 +302,12 @@ export default function HomePage() {
     });
   };
 
-  const handleIngestDemo = async () => {
+  const handleSyncLibrary = async () => {
     setIsIngesting(true);
     setError(null);
-    setStatusLine("导入演示语料库…");
+    setStatusLine("同步资料库…");
     try {
-      const result = await ingestDemoData(true);
+      const result = await ingestLibraryData(true);
       setSuggestionRefreshKey((k) => k + 1);
       await refreshCorpusStatus();
       setStatusLine(
@@ -332,7 +332,7 @@ export default function HomePage() {
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
-        onIngestDemo={handleIngestDemo}
+        onSyncLibrary={handleSyncLibrary}
         corpusStatus={corpusStatus}
         onRefreshCorpusStatus={refreshCorpusStatus}
         isIngesting={isIngesting}
@@ -368,7 +368,7 @@ export default function HomePage() {
                   欢迎使用 Finsight 终端
                 </h2>
                 <p className="mt-3 max-w-md text-sm text-muted-foreground">
-                  请先从侧边栏加载演示语料库，随后可提问跨品种权益或宏观类问题。
+                  请先从侧边栏同步资料库，随后可提问跨品种权益或宏观类问题。
                   回答将先展示思考过程（检索命中与内部分析规划），再流式输出正文，并附带引用来源。
                 </p>
               </div>

@@ -100,16 +100,16 @@ export async function fetchSuggestions(
 
 export interface CorpusStatus {
   stored_count: number;
-  demo_file_count: number;
-  demo_tickers: string[];
-  demo_file: string;
-  demo_version?: string | null;
-  demo_as_of?: string | null;
+  library_manifest_count: number;
+  library_tickers: string[];
+  library_file: string;
+  library_version?: string | null;
+  library_as_of?: string | null;
   is_loaded: boolean;
   needs_reload?: boolean;
 }
 
-export interface IngestDemoResponse {
+export interface IngestLibraryResponse {
   ingested_nodes: number;
   stored_count: number;
   status: string;
@@ -125,13 +125,13 @@ export async function fetchCorpusStatus(): Promise<CorpusStatus> {
   return response.json();
 }
 
-export async function ingestDemoData(
+export async function ingestLibraryData(
   replace = true
-): Promise<IngestDemoResponse> {
+): Promise<IngestLibraryResponse> {
   const response = await fetch(`${API_BASE}/api/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ use_demo: true, replace }),
+    body: JSON.stringify({ use_library: true, replace }),
   });
   if (!response.ok) {
     const text = await response.text();

@@ -1,4 +1,4 @@
-"""Load injectable financial document corpora from JSON data files."""
+"""Load financial document library from JSON data files."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 _DATA_DIR = Path(__file__).resolve().parent / "data"
-_DEMO_CORPUS_PATH = _DATA_DIR / "demo_corpus.json"
+_CORPUS_PATH = _DATA_DIR / "corpus.json"
 
 
 def _validate_document(doc: dict[str, Any], index: int) -> None:
@@ -38,18 +38,18 @@ def load_corpus_from_path(path: Path) -> list[dict[str, Any]]:
     return documents
 
 
-def get_demo_documents() -> list[dict[str, Any]]:
-    """Return demo corpus documents from backend/data/demo_corpus.json."""
-    if not _DEMO_CORPUS_PATH.is_file():
+def get_library_documents() -> list[dict[str, Any]]:
+    """Return bundled library documents from backend/data/corpus.json."""
+    if not _CORPUS_PATH.is_file():
         raise FileNotFoundError(
-            f"Demo corpus not found: {_DEMO_CORPUS_PATH}. "
-            "Ensure backend/data/demo_corpus.json exists."
+            f"Library corpus not found: {_CORPUS_PATH}. "
+            "Ensure backend/data/corpus.json exists."
         )
-    return load_corpus_from_path(_DEMO_CORPUS_PATH)
+    return load_corpus_from_path(_CORPUS_PATH)
 
 
-def get_demo_corpus_meta() -> dict[str, Any]:
-    with _DEMO_CORPUS_PATH.open(encoding="utf-8") as f:
+def get_library_meta() -> dict[str, Any]:
+    with _CORPUS_PATH.open(encoding="utf-8") as f:
         payload = json.load(f)
     documents = payload.get("documents", []) if isinstance(payload, dict) else payload
     tickers = sorted(
@@ -60,11 +60,11 @@ def get_demo_corpus_meta() -> dict[str, Any]:
         }
     )
     return {
-        "name": payload.get("name", "demo") if isinstance(payload, dict) else "demo",
+        "name": payload.get("name", "library") if isinstance(payload, dict) else "library",
         "description": payload.get("description", "") if isinstance(payload, dict) else "",
         "version": payload.get("version") if isinstance(payload, dict) else None,
         "as_of_calendar": payload.get("as_of_calendar") if isinstance(payload, dict) else None,
         "document_count": len(documents),
         "tickers": tickers,
-        "file": str(_DEMO_CORPUS_PATH.name),
+        "file": str(_CORPUS_PATH.name),
     }

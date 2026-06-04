@@ -1,7 +1,7 @@
 {
   "version": "1.2",
-  "name": "finsight-demo-corpus",
-  "description": "演示语料：模拟截至 2026-06-05 已披露的最新财报/宏观片段（每标的含 is_latest 标记）",
+  "name": "finsight-research-library",
+  "description": "机构研究资料库：截至 2026-06-05 已披露财报、宏观与行业摘要（含 is_latest 标记）",
   "as_of_calendar": "2026-06-05",
   "documents": [
     {

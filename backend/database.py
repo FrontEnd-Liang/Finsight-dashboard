@@ -26,7 +26,7 @@ def count_documents(client: Client) -> int:
 
 
 def clear_documents(client: Client) -> None:
-    """Remove all rows from financial_documents (demo re-ingest)."""
+    """Remove all rows from financial_documents (full library re-sync)."""
     client.table("financial_documents").delete().gte(
         "created_at", "1970-01-01T00:00:00+00:00"
     ).execute()

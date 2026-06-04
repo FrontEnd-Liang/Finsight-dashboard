@@ -88,7 +88,7 @@ export function ChatMessage({ message, onFeedback }: ChatMessageProps) {
                 {thinkingOpen && (
                   <div className="border-t border-terminal-border/60 px-3 py-2">
                     <MarkdownMessage
-                      content={message.thinking?.trim() || "正在检索语料并规划分析路径…"}
+                      content={message.thinking?.trim() || "正在检索资料库并规划分析路径…"}
                       className="text-xs text-muted-foreground [&_p]:leading-relaxed"
                     />
                   </div>

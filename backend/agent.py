@@ -19,7 +19,7 @@ from supabase import Client
 from config import Settings
 from embeddings import create_embed_model
 from llm import create_llm
-from corpus import get_demo_documents
+from corpus import get_library_documents
 from database import (
     clear_documents,
     count_documents,
@@ -42,7 +42,7 @@ You analyze equities, macro trends, earnings, and regulatory filings using retri
 Today (calendar, Asia/Shanghai): {today}
 
 Rules:
-- Retrieved excerpts are from the **ingested knowledge base only** (demo filings), not live market data.
+- Retrieved excerpts are from the **ingested research library only**, not live market data feeds.
 - Each excerpt has a **fiscal/report period** in its source label (e.g. FY2025, Q1 2026). Cite that period explicitly; do not call it "today's data" unless period_end matches the calendar year of today.
 - If the user asks for "latest" figures but context only has older fiscal periods, state the newest period available in context and what newer filing would be needed.
 - For financial questions: ground answers in provided context; cite tickers, figures, and source period when available.
@@ -173,12 +173,12 @@ class FinancialResearchAgent:
         ]
         if not nodes:
             lines.append(
-                "- 未命中相关文档（相似度低于阈值或语料库为空），将基于模型常识作答并标注证据缺口。"
+                "- 未命中相关文档（相似度低于阈值或资料库为空），将基于模型常识作答并标注证据缺口。"
             )
             return "\n".join(lines)
 
         lines.append(
-            f"- 命中 {len(nodes)} 条（语料为已入库披露片段，非实时行情；"
+            f"- 命中 {len(nodes)} 条（资料库已入库披露片段，非实时行情；"
             f"以下按语义相似度排序，未必等于日历意义上的「最新」）"
         )
         for i, node in enumerate(nodes[:5], start=1):
@@ -197,7 +197,7 @@ class FinancialResearchAgent:
             )
         lines.append("")
         lines.append(
-            "**说明：** 若需 2026 年最新季报，请确认侧边栏已用最新 `demo_corpus.json` 重新注入语料。"
+            "**说明：** 若需更新至最新披露，请在侧边栏执行「同步资料库」。"
         )
         return "\n".join(lines)
 
@@ -207,9 +207,9 @@ class FinancialResearchAgent:
         prompt = (
             f"{build_system_prompt()}\n\n"
             f"用户问题：{query.strip()}\n\n"
-            "当前 RAG 未返回可用正文（语料不匹配或合成失败）。请用中文直接回答：\n"
+            "当前 RAG 未返回可用正文（资料不匹配或合成失败）。请用中文直接回答：\n"
             "- 日期/时间：使用系统提示中的今日日期；\n"
-            "- 指数/股价涨跌预测：明确说明演示环境无实时行情，不能负责任预测，"
+            "- 指数/股价涨跌预测：明确说明资料库无实时行情，不能负责任预测，"
             "但可列出应关注的宏观变量（FOMC、利率、VIX、龙头财报等）及分析框架；\n"
             "- 其它：简要说明原因并给出可执行建议。"
         )
@@ -230,7 +230,7 @@ class FinancialResearchAgent:
             f"## Retrieved context\n{context}\n\n"
             f"## User question\n{query.strip()}\n\n"
             "用中文直接回答。引用数字时必须写明对应财报/公告期间（如 FY2025、Q1 2026）；"
-            "勿把语料中的旧期间说成「当前最新」。若证据不足请说明缺口。避免冗长铺垫。"
+            "勿把资料库中的旧期间说成「当前最新」。若证据不足请说明缺口。避免冗长铺垫。"
         )
         response = llm.stream_complete(prompt)
         for chunk in response:
@@ -303,14 +303,14 @@ class FinancialResearchAgent:
             return lines
 
         try:
-            demo_docs = get_demo_documents()
+            library_docs = get_library_documents()
         except FileNotFoundError:
-            demo_docs = []
+            library_docs = []
         return [
             f"- {doc['metadata'].get('ticker', '—')} · "
             f"{doc['metadata'].get('source', '—')} · "
             f"{doc['metadata'].get('type', '—')}"
-            for doc in demo_docs
+            for doc in library_docs
         ]
 
     def _parse_suggestions_json(self, text: str, count: int) -> list[str] | None:
@@ -330,11 +330,11 @@ class FinancialResearchAgent:
         return items[:count]
 
     def corpus_based_suggestions(self, count: int = 4) -> list[str]:
-        """Instant suggestions from demo corpus tickers (no LLM)."""
-        from corpus import get_demo_corpus_meta
+        """Instant suggestions from library coverage tickers (no LLM)."""
+        from corpus import get_library_meta
 
         try:
-            tickers = list(get_demo_corpus_meta().get("tickers") or [])
+            tickers = list(get_library_meta().get("tickers") or [])
         except FileNotFoundError:
             tickers = []
 
@@ -401,7 +401,7 @@ class FinancialResearchAgent:
             "- 覆盖知识库中不同 ticker/主题，优先引用库内已有标的\n"
             "- 仅输出 JSON 字符串数组，不要 markdown 或其它说明\n\n"
             f"知识库概况：\n"
-            + ("\n".join(corpus_lines) if corpus_lines else "（语料库为空，生成通用金融研究问题）")
+            + ("\n".join(corpus_lines) if corpus_lines else "（资料库为空，生成通用金融研究问题）")
             + recent_block
         )
 
@@ -414,19 +414,20 @@ class FinancialResearchAgent:
             return baseline
 
     def get_corpus_status(self) -> dict[str, Any]:
-        from corpus import get_demo_corpus_meta
+        from corpus import get_library_meta
 
         stored = count_documents(self.supabase_client)
-        demo_meta = get_demo_corpus_meta()
+        library_meta = get_library_meta()
         return {
             "stored_count": stored,
-            "demo_file_count": demo_meta["document_count"],
-            "demo_tickers": demo_meta["tickers"],
-            "demo_file": demo_meta["file"],
-            "demo_version": demo_meta.get("version"),
-            "demo_as_of": demo_meta.get("as_of_calendar"),
+            "library_manifest_count": library_meta["document_count"],
+            "library_tickers": library_meta["tickers"],
+            "library_file": library_meta["file"],
+            "library_version": library_meta.get("version"),
+            "library_as_of": library_meta.get("as_of_calendar"),
             "is_loaded": stored > 0,
-            "needs_reload": stored > 0 and stored != demo_meta["document_count"],
+            "needs_reload": stored > 0
+            and stored != library_meta["document_count"],
         }
 
     def ingest_documents(

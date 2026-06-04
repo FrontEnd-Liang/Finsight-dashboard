@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent import FinancialResearchAgent
-from corpus import get_demo_documents
+from corpus import get_library_documents
 from config import get_settings
 from database import create_supabase_client, ensure_vector_store_ready
 
@@ -57,10 +57,10 @@ class ChatRequest(BaseModel):
 
 class IngestRequest(BaseModel):
     documents: list[dict[str, Any]] | None = None
-    use_demo: bool = False
+    use_library: bool = False
     replace: bool = Field(
         default=False,
-        description="Clear existing financial_documents before ingest (recommended for demo reload)",
+        description="Clear existing financial_documents before ingest (recommended for full library sync)",
     )
 
 
@@ -129,8 +129,8 @@ async def ingest(request: IngestRequest):
         raise HTTPException(status_code=503, detail="Agent not initialized")
 
     docs = request.documents
-    if request.use_demo or not docs:
-        docs = get_demo_documents()
+    if request.use_library or not docs:
+        docs = get_library_documents()
 
     try:
         count = agent.ingest_documents(docs, replace=request.replace)
