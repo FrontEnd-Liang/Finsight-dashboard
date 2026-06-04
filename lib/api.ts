@@ -8,9 +8,20 @@ export type SSEEvent =
   | { type: "error"; message: string };
 
 export interface SourceRef {
+  rank?: number;
   ticker?: string;
   source?: string;
   score?: number;
+  relevance?: string;
+  sector?: string;
+  doc_type?: string;
+  fiscal_year?: number;
+  fiscal_quarter?: string;
+  period_end?: string;
+  filed_date?: string;
+  is_latest?: boolean;
+  document_id?: string;
+  excerpt?: string;
 }
 
 export async function* streamChat(

@@ -163,41 +163,159 @@ class FinancialResearchAgent:
             ),
         )
 
+    @staticmethod
+    def _relevance_label(score: float) -> str:
+        if score >= 0.55:
+            return "高"
+        if score >= 0.45:
+            return "中"
+        return "低"
+
+    def _node_to_source_ref(self, rank: int, node: NodeWithScore) -> dict[str, Any]:
+        meta = node.metadata or {}
+        content = (node.get_content() or "").strip()
+        score = float(node.score or 0)
+        node_id = getattr(node.node, "id_", None) or meta.get("id")
+        return {
+            "rank": rank,
+            "ticker": meta.get("ticker"),
+            "source": meta.get("source"),
+            "score": round(score, 4),
+            "relevance": self._relevance_label(score),
+            "sector": meta.get("sector"),
+            "doc_type": meta.get("type"),
+            "fiscal_year": meta.get("fiscal_year"),
+            "fiscal_quarter": meta.get("fiscal_quarter"),
+            "period_end": meta.get("period_end"),
+            "filed_date": meta.get("filed_date"),
+            "is_latest": bool(meta.get("is_latest")),
+            "document_id": str(node_id) if node_id else None,
+            "excerpt": content[:520],
+        }
+
+    def _infer_analysis_plan(
+        self, query: str, nodes: list[NodeWithScore]
+    ) -> list[str]:
+        if not nodes:
+            return [
+                "未检索到可用片段，将说明资料库缺口并给出分析框架（不作实时行情预测）。"
+            ]
+
+        tickers = sorted(
+            {
+                str((n.metadata or {}).get("ticker"))
+                for n in nodes
+                if (n.metadata or {}).get("ticker")
+            }
+        )
+        plans: list[str] = []
+        q = query.strip()
+
+        if len(tickers) >= 2:
+            sample = "、".join(tickers[:6])
+            plans.append(
+                f"横向对比 {sample} 的关键 KPI（营收、增速、利润率、分部业务等），"
+                "引用各条来源的披露期间。"
+            )
+        elif tickers:
+            plans.append(
+                f"围绕 `{tickers[0]}` 归纳财报要点、同比变化与管理层表述（仅基于检索片段）。"
+            )
+
+        if any(k in q for k in ("表格", "对比", "Markdown", "markdown")):
+            plans.append("使用 Markdown 表格组织指标，列标题注明期间与来源。")
+        if any(k in q.upper() for k in ("FOMC", "MACRO")) or "宏观" in q:
+            plans.append("区分宏观披露与个股财报，避免混用不同口径。")
+        if "NVDA" in q.upper() or "数据中心" in q:
+            plans.append("优先引用 NVDA 最新季报中数据中心收入与增速表述。")
+
+        latest_count = sum(1 for n in nodes if (n.metadata or {}).get("is_latest"))
+        if latest_count:
+            plans.append(
+                f"共 {len(nodes)} 条命中，其中 {latest_count} 条标记为库内「最新披露」。"
+            )
+
+        return plans[:5]
+
     def _format_retrieval_thinking(
         self, query: str, nodes: list[NodeWithScore]
     ) -> str:
         lines = [
-            f"**问题理解：** {query.strip()}",
+            "## 问题理解",
+            query.strip(),
             "",
-            "**知识库检索：**",
+            "## 检索策略",
+            f"- 将问题编码为 {self.settings.embedding_dimensions} 维向量，"
+            "在 `financial_documents` 表做 pgvector 余弦近邻检索。",
+            f"- 取 Top **{self.settings.rag_top_k}** 条；同分时优先 `is_latest` 披露。",
+            "- 资料为已入库研报/财报摘要，**非**实时行情推送。",
+            "",
         ]
         if not nodes:
-            lines.append(
-                "- 未命中相关文档（相似度低于阈值或资料库为空），将基于模型常识作答并标注证据缺口。"
+            lines.extend(
+                [
+                    "## 检索结果",
+                    "- **未命中**相关文档（语料库为空或语义不匹配）。",
+                    "",
+                    "## 分析规划",
+                    "- 明确证据缺口，不作无依据的数字预测。",
+                ]
             )
             return "\n".join(lines)
 
+        lines.append("## 检索结果")
         lines.append(
-            f"- 命中 {len(nodes)} 条（资料库已入库披露片段，非实时行情；"
-            f"以下按语义相似度排序，未必等于日历意义上的「最新」）"
+            f"共命中 **{len(nodes)}** 条（按语义相似度降序；"
+            "相似度 ≠ 日历最新，请结合披露日期判断）。"
         )
-        for i, node in enumerate(nodes[:5], start=1):
+        lines.append("")
+
+        for i, node in enumerate(nodes[: self.settings.rag_top_k], start=1):
             meta = node.metadata or {}
-            ticker = meta.get("ticker") or "—"
-            source = meta.get("source") or "—"
+            ref = self._node_to_source_ref(i, node)
+            ticker = ref.get("ticker") or "—"
+            source = ref.get("source") or "—"
+            sector = meta.get("sector") or "—"
+            doc_type = meta.get("type") or "—"
             fy = meta.get("fiscal_year")
             fq = meta.get("fiscal_quarter")
-            latest = "最新" if meta.get("is_latest") else ""
-            period_tag = f"FY{fy} {fq or ''}".strip() if fy is not None else ""
-            score = round(float(node.score or 0), 4)
-            snippet = (node.get_content() or "").replace("\n", " ")[:120]
-            label = f"{source} {period_tag} {latest}".strip()
+            period_parts = []
+            if fy is not None:
+                period_parts.append(f"FY{fy}")
+            if fq:
+                period_parts.append(str(fq))
+            period_label = " ".join(period_parts) if period_parts else "—"
+            latest_tag = " · **最新披露**" if meta.get("is_latest") else ""
+            score = ref["score"]
+            rel = ref["relevance"]
+            excerpt = (ref.get("excerpt") or "").replace("\n", " ")
+
+            lines.append(f"### {i}. `{ticker}` — {source}{latest_tag}")
             lines.append(
-                f"  {i}. `{ticker}` · {label} · 相似度 {score} — {snippet}…"
+                f"- **相似度：** {score}（相关度：**{rel}**） · "
+                f"**板块：** {sector} · **类型：** {doc_type}"
             )
-        lines.append("")
-        lines.append(
-            "**说明：** 若需更新至最新披露，请在侧边栏执行「同步资料库」。"
+            if meta.get("period_end"):
+                lines.append(f"- **报告期末：** {meta.get('period_end')}")
+            if meta.get("filed_date"):
+                lines.append(f"- **披露/入库日期：** {meta.get('filed_date')}")
+            lines.append(f"- **期间标签：** {period_label}")
+            if ref.get("document_id"):
+                lines.append(f"- **文档 ID：** `{ref['document_id']}`")
+            lines.append(f"- **正文摘录：**")
+            lines.append(f"  > {excerpt}")
+            lines.append("")
+
+        lines.append("## 分析规划")
+        for step in self._infer_analysis_plan(query, nodes):
+            lines.append(f"- {step}")
+        lines.extend(
+            [
+                "",
+                "## 说明",
+                "- 以上摘录将注入大模型上下文；回答中会再次标注引用期间。",
+                "- 若需更新库内披露，请在侧边栏 **同步资料库**。",
+            ]
         )
         return "\n".join(lines)
 
@@ -275,16 +393,10 @@ class FinancialResearchAgent:
 
         await producer_task
 
-        sources = []
-        for node in nodes[: self.settings.rag_top_k]:
-            meta = node.metadata or {}
-            sources.append(
-                {
-                    "ticker": meta.get("ticker"),
-                    "source": meta.get("source"),
-                    "score": round(float(node.score or 0), 4),
-                }
-            )
+        sources = [
+            self._node_to_source_ref(i, node)
+            for i, node in enumerate(nodes[: self.settings.rag_top_k], start=1)
+        ]
 
         done_payload = json.dumps({"type": "done", "sources": sources})
         yield f"data: {done_payload}\n\n"

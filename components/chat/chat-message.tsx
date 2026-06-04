@@ -51,6 +51,102 @@ interface ChatMessageProps {
   onStopSpeak?: () => void;
 }
 
+function relevanceClass(label?: string) {
+  if (label === "高") return "text-terminal-green";
+  if (label === "中") return "text-terminal-amber";
+  return "text-muted-foreground";
+}
+
+function SourceDetailCard({ src }: { src: SourceRef }) {
+  const period =
+    src.fiscal_year != null
+      ? `FY${src.fiscal_year}${src.fiscal_quarter ? ` ${src.fiscal_quarter}` : ""}`
+      : null;
+
+  return (
+    <li className="rounded border border-terminal-border bg-background/40 px-3 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
+            {src.rank != null && (
+              <span className="text-muted-foreground/80">#{src.rank}</span>
+            )}
+            <span className="font-semibold text-terminal-green">
+              {src.ticker ?? "—"}
+            </span>
+            {src.is_latest && (
+              <span className="rounded border border-terminal-green/40 bg-terminal-green/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-terminal-green">
+                最新披露
+              </span>
+            )}
+            {src.relevance && (
+              <span
+                className={cn(
+                  "text-[9px] uppercase tracking-wide",
+                  relevanceClass(src.relevance)
+                )}
+              >
+                相关度 {src.relevance}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-foreground/90">{src.source ?? "未知来源"}</p>
+        </div>
+        <span className="shrink-0 font-mono text-xs text-terminal-amber">
+          相似度 {(src.score ?? 0).toFixed(4)}
+        </span>
+      </div>
+
+      <dl className="mt-2 grid gap-1 font-mono text-[10px] text-muted-foreground sm:grid-cols-2">
+        {src.sector && (
+          <div>
+            <dt className="inline text-muted-foreground/70">板块 </dt>
+            <dd className="inline text-foreground/80">{src.sector}</dd>
+          </div>
+        )}
+        {src.doc_type && (
+          <div>
+            <dt className="inline text-muted-foreground/70">类型 </dt>
+            <dd className="inline text-foreground/80">{src.doc_type}</dd>
+          </div>
+        )}
+        {period && (
+          <div>
+            <dt className="inline text-muted-foreground/70">期间 </dt>
+            <dd className="inline text-foreground/80">{period}</dd>
+          </div>
+        )}
+        {src.period_end && (
+          <div>
+            <dt className="inline text-muted-foreground/70">报告期末 </dt>
+            <dd className="inline text-foreground/80">{src.period_end}</dd>
+          </div>
+        )}
+        {src.filed_date && (
+          <div>
+            <dt className="inline text-muted-foreground/70">披露日期 </dt>
+            <dd className="inline text-foreground/80">{src.filed_date}</dd>
+          </div>
+        )}
+        {src.document_id && (
+          <div className="sm:col-span-2">
+            <dt className="inline text-muted-foreground/70">文档 ID </dt>
+            <dd className="inline break-all text-foreground/70">
+              {src.document_id}
+            </dd>
+          </div>
+        )}
+      </dl>
+
+      {src.excerpt && (
+        <blockquote className="mt-2 border-l-2 border-terminal-green/40 pl-3 text-xs leading-relaxed text-muted-foreground">
+          {src.excerpt}
+        </blockquote>
+      )}
+    </li>
+  );
+}
+
 function ActionBtn({
   label,
   onClick,
@@ -283,12 +379,16 @@ export function ChatMessage({
                 {hasSources ? (
                   <div className="flex flex-wrap gap-1.5">
                     {message.sources!.slice(0, 3).map((src, i) => (
-                      <span
-                        key={`${src.ticker}-${i}`}
-                        className="rounded border border-terminal-border bg-terminal-panel px-2 py-0.5 font-mono text-[10px] text-terminal-green/80"
+                      <button
+                        key={`${src.ticker}-${src.rank ?? i}`}
+                        type="button"
+                        onClick={openSources}
+                        className="rounded border border-terminal-border bg-terminal-panel px-2 py-0.5 font-mono text-[10px] text-terminal-green/80 hover:border-terminal-green/50"
                       >
-                        {src.ticker ?? "文档"} · {src.score?.toFixed(2)}
-                      </span>
+                        {src.ticker ?? "文档"}
+                        {src.source ? ` · ${src.source.split(" ")[0]}` : ""}
+                        {src.score != null ? ` · ${src.score.toFixed(2)}` : ""}
+                      </button>
                     ))}
                     {message.sources!.length > 3 && (
                       <button
@@ -347,46 +447,34 @@ export function ChatMessage({
       </div>
 
       <Dialog open={thinkingDialogOpen} onOpenChange={setThinkingDialogOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>思考过程</DialogTitle>
             <DialogDescription>
-              检索资料库命中与回答前的分析摘要
+              检索策略、命中文档摘录与分析规划（回答生成前）
             </DialogDescription>
           </DialogHeader>
           <MarkdownMessage
             content={message.thinking?.trim() || "（无内容）"}
-            className="text-sm text-muted-foreground"
+            className="text-sm text-muted-foreground [&_blockquote]:border-terminal-green/30 [&_blockquote]:text-xs"
           />
         </DialogContent>
       </Dialog>
 
       <Dialog open={sourcesDialogOpen} onOpenChange={setSourcesDialogOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>引用来源</DialogTitle>
             <DialogDescription>
-              RAG 检索命中的资料片段（相似度越高越相关）
+              RAG 检索命中的资料片段（相似度越高越相关；含正文摘录与披露元数据）
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-3">
             {(message.sources ?? []).map((src, i) => (
-              <li
-                key={`${src.ticker}-${src.source}-${i}`}
-                className="rounded border border-terminal-border bg-background/40 px-3 py-2"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
-                  <span className="text-terminal-green">
-                    {src.ticker ?? "—"}
-                  </span>
-                  <span className="text-terminal-amber">
-                    相似度 {(src.score ?? 0).toFixed(4)}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {src.source ?? "未知来源"}
-                </p>
-              </li>
+              <SourceDetailCard
+                key={`${src.document_id ?? src.ticker}-${src.rank ?? i}`}
+                src={src}
+              />
             ))}
           </ul>
         </DialogContent>
