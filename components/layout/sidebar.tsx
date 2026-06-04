@@ -28,6 +28,7 @@ interface SidebarProps {
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
   onDeleteSession: (id: string) => void;
+  onClearAllSessions?: () => void;
   onSyncLibrary: () => Promise<IngestLibraryResponse>;
   corpusStatus: CorpusStatus | null;
   onRefreshCorpusStatus?: () => void;
@@ -40,6 +41,7 @@ export function Sidebar({
   onSelectSession,
   onNewSession,
   onDeleteSession,
+  onClearAllSessions,
   onSyncLibrary,
   corpusStatus,
   onRefreshCorpusStatus,
@@ -129,11 +131,23 @@ export function Sidebar({
 
       <Separator className="bg-terminal-border" />
 
-      <div className="flex items-center gap-2 px-4 py-2">
-        <BarChart3 className="h-3 w-3 text-terminal-amber" />
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          会话历史
-        </span>
+      <div className="flex items-center justify-between gap-2 px-4 py-2">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-3 w-3 text-terminal-amber" />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            会话历史
+          </span>
+        </div>
+        {sessions.length > 0 && onClearAllSessions ? (
+          <button
+            type="button"
+            onClick={onClearAllSessions}
+            className="font-mono text-[9px] text-muted-foreground transition hover:text-terminal-red"
+            title="清空全部会话"
+          >
+            清空全部
+          </button>
+        ) : null}
       </div>
 
       <ScrollArea className="flex-1 px-2">
@@ -167,9 +181,18 @@ export function Sidebar({
               </button>
               <button
                 type="button"
-                onClick={() => onDeleteSession(session.id)}
-                className="opacity-0 transition group-hover:opacity-100 text-muted-foreground hover:text-terminal-red"
-                aria-label="删除会话"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteSession(session.id);
+                }}
+                className={cn(
+                  "shrink-0 rounded p-1 transition",
+                  activeSessionId === session.id
+                    ? "text-muted-foreground/80 hover:bg-terminal-red/10 hover:text-terminal-red"
+                    : "text-muted-foreground/50 opacity-70 group-hover:opacity-100 hover:bg-terminal-red/10 hover:text-terminal-red"
+                )}
+                aria-label={`删除会话：${session.title}`}
+                title="删除此会话"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

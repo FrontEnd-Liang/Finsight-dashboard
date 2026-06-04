@@ -19,7 +19,7 @@ import {
 } from "@/lib/api";
 import {
   createSessionId,
-  deleteMessages,
+  deleteSessionCaches,
   loadMessages,
   loadSessions,
   saveMessages,
@@ -264,42 +264,87 @@ export default function HomePage() {
     setStatusLine("就绪");
   };
 
-  const handleSelectSession = (id: string) => {
-    abortRef.current?.abort();
+  const switchToSession = useCallback((id: string) => {
     setActiveSessionId(id);
     setMessages(loadMessages(id));
     setError(null);
     setStatusLine("就绪");
+  }, []);
+
+  const handleSelectSession = (id: string) => {
+    abortRef.current?.abort();
+    switchToSession(id);
   };
 
+  const createFreshSession = useCallback((): ChatSession => {
+    const fresh: ChatSession = {
+      id: createSessionId(),
+      title: "新建研究",
+      updatedAt: Date.now(),
+    };
+    saveSessions([fresh]);
+    switchToSession(fresh.id);
+    setSessions([fresh]);
+    return fresh;
+  }, [switchToSession]);
+
   const handleDeleteSession = async (id: string) => {
-    deleteMessages(id);
+    const target = sessions.find((s) => s.id === id);
+    const label = target?.title?.trim() || "未命名会话";
+    if (!window.confirm(`确定删除「${label}」？对话记录将永久移除，且不可恢复。`)) {
+      return;
+    }
+
+    if (activeSessionId === id) {
+      abortRef.current?.abort();
+      setIsStreaming(false);
+    }
+
+    deleteSessionCaches(id);
     try {
       await resetSession(id);
     } catch {
       /* backend reset is best-effort */
     }
-    setSessions((prev) => {
-      const next = prev.filter((s) => s.id !== id);
-      saveSessions(next);
-      if (activeSessionId === id) {
-        if (next.length === 0) {
-          const newId = createSessionId();
-          const fresh: ChatSession = {
-            id: newId,
-            title: "新建研究",
-            updatedAt: Date.now(),
-          };
-          saveSessions([fresh]);
-          setActiveSessionId(newId);
-          setMessages([]);
-          return [fresh];
+
+    const next = sessions.filter((s) => s.id !== id);
+    if (next.length === 0) {
+      createFreshSession();
+      return;
+    }
+
+    saveSessions(next);
+    setSessions(next);
+    if (activeSessionId === id) {
+      switchToSession(next[0].id);
+    }
+  };
+
+  const handleClearAllSessions = async () => {
+    if (sessions.length === 0) return;
+    if (
+      !window.confirm(
+        `确定清空全部 ${sessions.length} 条会话历史？所有对话记录将永久移除，且不可恢复。`
+      )
+    ) {
+      return;
+    }
+
+    abortRef.current?.abort();
+    setIsStreaming(false);
+
+    await Promise.all(
+      sessions.map(async (s) => {
+        deleteSessionCaches(s.id);
+        try {
+          await resetSession(s.id);
+        } catch {
+          /* best-effort */
         }
-        setActiveSessionId(next[0].id);
-        setMessages(loadMessages(next[0].id));
-      }
-      return next;
-    });
+      })
+    );
+
+    createFreshSession();
   };
 
   const handleSyncLibrary = async () => {
@@ -332,6 +377,7 @@ export default function HomePage() {
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+        onClearAllSessions={handleClearAllSessions}
         onSyncLibrary={handleSyncLibrary}
         corpusStatus={corpusStatus}
         onRefreshCorpusStatus={refreshCorpusStatus}
