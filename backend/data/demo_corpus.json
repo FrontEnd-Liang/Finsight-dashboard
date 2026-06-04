@@ -1,71 +1,123 @@
 {
-  "version": "1.1",
+  "version": "1.2",
   "name": "finsight-demo-corpus",
-  "description": "演示用财报/宏观公告片段（模拟截至 2026-06-04 可获得的披露），供 Supabase pgvector 检索",
-  "as_of_calendar": "2026-06-04",
+  "description": "演示语料：模拟截至 2026-06-05 已披露的最新财报/宏观片段（每标的含 is_latest 标记）",
+  "as_of_calendar": "2026-06-05",
   "documents": [
     {
-      "content": "Apple Inc. (AAPL) FY2025 (fiscal year ended Sep 2025, 10-K filed Feb 2026): Revenue $416.2B (+6.4% YoY), Gross Margin 46.8%, Operating Margin 32.1%, EPS $7.08. Services revenue $109.5B (+14% YoY). iPhone revenue $208.4B. R&D $34.0B. Management cites on-device AI features and India supply diversification.",
-      "metadata": {
-        "ticker": "AAPL",
-        "sector": "Technology",
-        "source": "10-K FY2025",
-        "type": "earnings",
-        "fiscal_year": 2025,
-        "period_end": "2025-09-30",
-        "filed_date": "2026-02-03"
-      }
-    },
-    {
-      "content": "Microsoft Corporation (MSFT) FY2025 (year ended Jun 2025, 10-K filed Aug 2025): Revenue $281.7B (+15% YoY). Intelligent Cloud $137.4B (+22% YoY). Operating income $128.5B. Commercial cloud gross margin 71%. Copilot seat expansion in Enterprise; AI datacenter CapEx remains elevated with ROI tracked per workload.",
-      "metadata": {
-        "ticker": "MSFT",
-        "sector": "Technology",
-        "source": "10-K FY2025",
-        "type": "earnings",
-        "fiscal_year": 2025,
-        "period_end": "2025-06-30",
-        "filed_date": "2025-08-01"
-      }
-    },
-    {
-      "content": "NVIDIA Corporation (NVDA) Q1 FY2026 (quarter ended Apr 2026, earnings May 2026): Revenue $44.8B (+72% YoY), Data Center $39.1B. Gross margin 73.1%. Blackwell Ultra ramp; sovereign AI and hyperscaler capex pipelines disclosed. Networking +38% YoY on scale-out clusters.",
+      "content": "NVIDIA Corporation (NVDA) Q1 FY2026 (quarter ended Apr 26 2026, released May 28 2026) — LATEST QUARTER. Total revenue $44.8B (+72% YoY). Data Center revenue $39.1B (+87% YoY), ~87% of total revenue. Gross margin GAAP 73.1%. Blackwell Ultra in full production; sovereign-AI and top-4 hyperscaler capex pipelines disclosed. Networking revenue +38% YoY on scale-out AI clusters. Management: supply improving but still allocation-constrained on top SKUs.",
       "metadata": {
         "ticker": "NVDA",
         "sector": "Semiconductors",
         "source": "Earnings Release Q1 FY2026",
         "type": "earnings",
         "fiscal_year": 2026,
-        "period_end": "2026-04-30",
-        "filed_date": "2026-05-28"
+        "fiscal_quarter": "Q1",
+        "period_end": "2026-04-26",
+        "filed_date": "2026-05-28",
+        "is_latest": true
       }
     },
     {
-      "content": "Alphabet Inc. (GOOGL) FY2025 (year ended Dec 2025, 10-K filed Feb 2026): Consolidated revenue $402.0B (+15% YoY). Google Cloud $58.0B (+32% YoY). Search resilient; YouTube ads +11%. CapEx $61.0B for TPU/GPU and datacenter build. Antitrust remedy compliance costs noted.",
+      "content": "NVIDIA Corporation (NVDA) Q3 FY2025 (quarter ended Oct 27 2025, released Nov 2025). Total revenue $35.1B (+94% YoY). Data Center revenue $30.8B (+112% YoY). Gross margin 74.6%. Blackwell architecture demand exceeded supply; H200 ramping, inference mix rising. Used for sequential QoQ compares vs Q1 FY2026.",
+      "metadata": {
+        "ticker": "NVDA",
+        "sector": "Semiconductors",
+        "source": "Earnings Release Q3 FY2025",
+        "type": "earnings",
+        "fiscal_year": 2025,
+        "fiscal_quarter": "Q3",
+        "period_end": "2025-10-27",
+        "filed_date": "2025-11-20",
+        "is_latest": false
+      }
+    },
+    {
+      "content": "Microsoft Corporation (MSFT) Q3 FY2026 (quarter ended Mar 31 2026, released Apr 29 2026) — LATEST QUARTER. Total revenue $70.1B (+14% YoY). Intelligent Cloud $32.2B (+22% YoY). Azure and other cloud services +35% YoY (constant currency ~34%). Productivity & Business Processes $29.9B (+11% YoY); More Personal Computing $13.0B (+6% YoY). Commercial cloud gross margin 70%. Copilot paid seats +24% QoQ in Enterprise; AI infra CapEx guided up for FY2026.",
+      "metadata": {
+        "ticker": "MSFT",
+        "sector": "Technology",
+        "source": "Earnings Release Q3 FY2026",
+        "type": "earnings",
+        "fiscal_year": 2026,
+        "fiscal_quarter": "Q3",
+        "period_end": "2026-03-31",
+        "filed_date": "2026-04-29",
+        "is_latest": true
+      }
+    },
+    {
+      "content": "Microsoft Corporation (MSFT) FY2025 annual (year ended Jun 30 2025, 10-K filed Aug 2025). Revenue $281.7B (+15% YoY). Intelligent Cloud $137.4B (+22% YoY) for full year; Azure +30% YoY cited in annual letter. Operating income $128.5B. Commercial cloud gross margin 71%. Copilot attach in M365 E5; AI datacenter lease and CapEx elevated.",
+      "metadata": {
+        "ticker": "MSFT",
+        "sector": "Technology",
+        "source": "10-K FY2025",
+        "type": "earnings",
+        "fiscal_year": 2025,
+        "fiscal_quarter": "FY",
+        "period_end": "2025-06-30",
+        "filed_date": "2025-08-01",
+        "is_latest": false
+      }
+    },
+    {
+      "content": "Apple Inc. (AAPL) FY2025 (fiscal year ended Sep 27 2025, 10-K filed Feb 2026) — LATEST ANNUAL. Revenue $416.2B (+6.4% YoY). Gross margin 46.8%; operating margin 32.1%; EPS $7.08. Services $109.5B (+14% YoY). iPhone $208.4B. R&D $34.0B. On-device Apple Intelligence rollout; India manufacturing share up.",
+      "metadata": {
+        "ticker": "AAPL",
+        "sector": "Technology",
+        "source": "10-K FY2025",
+        "type": "earnings",
+        "fiscal_year": 2025,
+        "fiscal_quarter": "FY",
+        "period_end": "2025-09-27",
+        "filed_date": "2026-02-03",
+        "is_latest": true
+      }
+    },
+    {
+      "content": "Alphabet Inc. (GOOGL) FY2025 (year ended Dec 31 2025, 10-K filed Feb 2026) — LATEST ANNUAL. Consolidated revenue $402.0B (+15% YoY). Google Cloud $58.0B (+32% YoY). Search resilient; YouTube ads +11%. CapEx $61.0B for TPU/GPU/datacenter. DeepMind model serving costs embedded in Cloud margin discussion.",
       "metadata": {
         "ticker": "GOOGL",
         "sector": "Technology",
         "source": "10-K FY2025",
         "type": "earnings",
         "fiscal_year": 2025,
+        "fiscal_quarter": "FY",
         "period_end": "2025-12-31",
-        "filed_date": "2026-02-10"
+        "filed_date": "2026-02-10",
+        "is_latest": true
       }
     },
     {
-      "content": "Amazon.com Inc. (AMZN) FY2025 (year ended Dec 2025, 10-K filed Feb 2026): Net sales $691.0B (+8% YoY). AWS $142.0B (+18% YoY) with operating margin expansion. Advertising $68.5B (+19% YoY). North America retail margin improved on regional fulfillment optimization.",
+      "content": "Amazon.com Inc. (AMZN) FY2025 (year ended Dec 31 2025, 10-K filed Feb 2026) — LATEST ANNUAL. Net sales $691.0B (+8% YoY). AWS $142.0B (+18% YoY) with operating margin expansion. Advertising $68.5B (+19% YoY). North America retail operating margin improved on regional fulfillment.",
       "metadata": {
         "ticker": "AMZN",
         "sector": "Technology",
         "source": "10-K FY2025",
         "type": "earnings",
         "fiscal_year": 2025,
+        "fiscal_quarter": "FY",
         "period_end": "2025-12-31",
-        "filed_date": "2026-02-07"
+        "filed_date": "2026-02-07",
+        "is_latest": true
       }
     },
     {
-      "content": "Federal Reserve FOMC Summary (May 2026): Policy rate 3.75%-4.00% after two 25bp cuts YTD. Core PCE trending toward 2.3%. Unemployment 4.1%. Statement flags tariff pass-through uncertainty; dot plot shows one additional cut in 2026 H2. QT runoff continues at reduced pace.",
+      "content": "Amazon Web Services (AMZN segment) Q1 2026 (calendar quarter, AWS ops review Apr 2026) — LATEST AWS QUARTERLY VIEW. AWS revenue $30.2B (+17% YoY). AI workload mix (Trainium/Inferentia + partner GPUs) cited as growth driver; enterprise migration backlog stable.",
+      "metadata": {
+        "ticker": "AMZN",
+        "sector": "Technology",
+        "source": "AWS Segment Brief Q1 2026",
+        "type": "earnings",
+        "fiscal_year": 2026,
+        "fiscal_quarter": "Q1",
+        "period_end": "2026-03-31",
+        "filed_date": "2026-04-15",
+        "is_latest": true
+      }
+    },
+    {
+      "content": "Federal Reserve FOMC Statement (May 7 2026) — LATEST MACRO. Policy rate 3.75%-4.00% after two 25bp cuts YTD. Core PCE ~2.3%. Unemployment 4.1%. Tariff pass-through risk noted; dot plot implies one more 25bp cut in 2026 H2. QT runoff at reduced pace.",
       "metadata": {
         "ticker": "MACRO",
         "sector": "Macro",
@@ -73,31 +125,49 @@
         "type": "macro",
         "fiscal_year": 2026,
         "period_end": "2026-05-07",
-        "filed_date": "2026-05-07"
+        "filed_date": "2026-05-07",
+        "is_latest": true
       }
     },
     {
-      "content": "JPMorgan Chase (JPM) Q1 2026: Net revenue $44.8B, Net income $14.6B. ROTCE 23%. IB fees +9% YoY. NII $24.0B; credit provisions $2.5B. CET1 15.9%. Management guides stable NII with modest loan growth; card delinquencies flat QoQ.",
+      "content": "JPMorgan Chase (JPM) Q1 2026 (quarter ended Mar 31 2026) — LATEST QUARTER. Net revenue $44.8B; net income $14.6B. ROTCE 23%. IB fees +9% YoY. NII $24.0B; credit provisions $2.5B. CET1 15.9%. Stable card delinquencies QoQ.",
       "metadata": {
         "ticker": "JPM",
         "sector": "Financials",
         "source": "Earnings Release Q1 2026",
         "type": "earnings",
         "fiscal_year": 2026,
+        "fiscal_quarter": "Q1",
         "period_end": "2026-03-31",
-        "filed_date": "2026-04-11"
+        "filed_date": "2026-04-11",
+        "is_latest": true
       }
     },
     {
-      "content": "Tesla Inc. (TSLA) Q1 2026: Revenue $22.1B, Automotive gross margin 16.8% ex-credits. Deliveries 386k units in quarter. Energy storage deployments +31% YoY. Robotaxi pilot cities expanded; AI training capex guided up for FSD v13 stack.",
+      "content": "Tesla Inc. (TSLA) Q1 2026 (quarter ended Mar 31 2026) — LATEST QUARTER. Revenue $22.1B. Automotive gross margin 16.8% ex-credits. Deliveries 386k units. Energy storage +31% YoY. Robotaxi pilot cities expanded; AI training capex up for FSD v13.",
       "metadata": {
         "ticker": "TSLA",
         "sector": "Consumer Discretionary",
         "source": "Shareholder Letter Q1 2026",
         "type": "earnings",
         "fiscal_year": 2026,
+        "fiscal_quarter": "Q1",
         "period_end": "2026-03-31",
-        "filed_date": "2026-04-22"
+        "filed_date": "2026-04-22",
+        "is_latest": true
+      }
+    },
+    {
+      "content": "AI infrastructure demand drivers (synthetic analyst note, as of 2026-06-05): Hyperscaler CapEx remains the primary pull for GPU/accelerator shipments (NVDA). Cloud vendors monetize via metered AI APIs and seat-based copilots (MSFT Azure, AMZN AWS). Compare DC hardware YoY vs cloud service YoY — different layers of the AI stack, not directly interchangeable units.",
+      "metadata": {
+        "ticker": "MACRO",
+        "sector": "Macro",
+        "source": "Research Note AI Stack 2026-06",
+        "type": "research",
+        "fiscal_year": 2026,
+        "period_end": "2026-06-05",
+        "filed_date": "2026-06-05",
+        "is_latest": true
       }
     }
   ]

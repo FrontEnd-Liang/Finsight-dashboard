@@ -140,15 +140,28 @@ class FinancialResearchAgent:
             content = (node.get_content() or "")[:600]
             period = meta.get("source") or meta.get("period_end") or "—"
             fy = meta.get("fiscal_year")
-            header = f"### {meta.get('ticker', '?')} — {period}"
+            fq = meta.get("fiscal_quarter")
+            latest = " [LATEST]" if meta.get("is_latest") else ""
+            header = f"### {meta.get('ticker', '?')} — {period}{latest}"
             if fy is not None:
-                header += f" (fiscal_year={fy})"
+                header += f" (FY{fy}"
+                if fq:
+                    header += f" {fq}"
+                header += ")"
             lines.append(f"{header}\n{content}")
         return "\n\n".join(lines)
 
     def _retrieve_for_query(self, query: str) -> list[NodeWithScore]:
         retriever = self._get_retriever()
-        return retriever.retrieve(query)
+        nodes = retriever.retrieve(query)
+        # Prefer documents marked is_latest in metadata when scores are close.
+        return sorted(
+            nodes,
+            key=lambda n: (
+                0 if (n.metadata or {}).get("is_latest") else 1,
+                -(float(n.score or 0)),
+            ),
+        )
 
     def _format_retrieval_thinking(
         self, query: str, nodes: list[NodeWithScore]
@@ -173,16 +186,18 @@ class FinancialResearchAgent:
             ticker = meta.get("ticker") or "—"
             source = meta.get("source") or "—"
             fy = meta.get("fiscal_year")
-            period_tag = f"FY{fy}" if fy is not None else ""
+            fq = meta.get("fiscal_quarter")
+            latest = "最新" if meta.get("is_latest") else ""
+            period_tag = f"FY{fy} {fq or ''}".strip() if fy is not None else ""
             score = round(float(node.score or 0), 4)
             snippet = (node.get_content() or "").replace("\n", " ")[:120]
-            label = f"{source} {period_tag}".strip()
+            label = f"{source} {period_tag} {latest}".strip()
             lines.append(
                 f"  {i}. `{ticker}` · {label} · 相似度 {score} — {snippet}…"
             )
+        lines.append("")
         lines.append(
-            "",
-            "**说明：** 若需 2026 年最新季报，请确认侧边栏已用最新 `demo_corpus.json` 重新注入语料。",
+            "**说明：** 若需 2026 年最新季报，请确认侧边栏已用最新 `demo_corpus.json` 重新注入语料。"
         )
         return "\n".join(lines)
 
@@ -408,7 +423,10 @@ class FinancialResearchAgent:
             "demo_file_count": demo_meta["document_count"],
             "demo_tickers": demo_meta["tickers"],
             "demo_file": demo_meta["file"],
+            "demo_version": demo_meta.get("version"),
+            "demo_as_of": demo_meta.get("as_of_calendar"),
             "is_loaded": stored > 0,
+            "needs_reload": stored > 0 and stored != demo_meta["document_count"],
         }
 
     def ingest_documents(

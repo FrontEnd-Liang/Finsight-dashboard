@@ -62,6 +62,8 @@ def get_demo_corpus_meta() -> dict[str, Any]:
     return {
         "name": payload.get("name", "demo") if isinstance(payload, dict) else "demo",
         "description": payload.get("description", "") if isinstance(payload, dict) else "",
+        "version": payload.get("version") if isinstance(payload, dict) else None,
+        "as_of_calendar": payload.get("as_of_calendar") if isinstance(payload, dict) else None,
         "document_count": len(documents),
         "tickers": tickers,
         "file": str(_DEMO_CORPUS_PATH.name),

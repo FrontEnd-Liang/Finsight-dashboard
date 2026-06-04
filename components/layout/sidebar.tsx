@@ -201,6 +201,26 @@ export function Sidebar({
               </span>
               <br />
               标的: {corpusStatus.demo_tickers.join(" · ") || "—"}
+              {corpusStatus.demo_as_of ? (
+                <>
+                  <br />
+                  语料截至:{" "}
+                  <span className="text-foreground/80">
+                    {corpusStatus.demo_as_of}
+                  </span>
+                  {corpusStatus.demo_version
+                    ? ` (v${corpusStatus.demo_version})`
+                    : null}
+                </>
+              ) : null}
+              {corpusStatus.needs_reload ? (
+                <>
+                  <br />
+                  <span className="text-terminal-amber">
+                    演示文件已更新，请重新加载语料
+                  </span>
+                </>
+              ) : null}
             </>
           ) : (
             <>

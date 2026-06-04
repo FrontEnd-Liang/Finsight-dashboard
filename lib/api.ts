@@ -103,7 +103,10 @@ export interface CorpusStatus {
   demo_file_count: number;
   demo_tickers: string[];
   demo_file: string;
+  demo_version?: string | null;
+  demo_as_of?: string | null;
   is_loaded: boolean;
+  needs_reload?: boolean;
 }
 
 export interface IngestDemoResponse {

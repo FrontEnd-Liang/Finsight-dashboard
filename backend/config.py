@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-chat"
     deepseek_context_window: int = 128_000
     chat_max_tokens: int = 2048
-    rag_top_k: int = 3
+    rag_top_k: int = 5
 
     supabase_url: str
     supabase_service_role_key: str
