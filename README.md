@@ -4,12 +4,22 @@
 
 ![Stack](https://img.shields.io/badge/Next.js-14-black) ![FastAPI](https://img.shields.io/badge/FastAPI-Python-green) ![LlamaIndex](https://img.shields.io/badge/RAG-LlamaIndex-blue) ![Supabase](https://img.shields.io/badge/Vector-pgvector-3ecf8e)
 
+## 演示视频
+
+<video width="100%" controls playsinline src="https://github.com/FrontEnd-Liang/Finsight-dashboard/raw/main/assets/demo.mp4">
+  您的浏览器不支持内嵌播放，请
+  <a href="./assets/demo.mp4">下载演示视频</a>
+  或在仓库中打开 <code>assets/demo.mp4</code>。
+</video>
+
+> 本地克隆后可直接打开 [`assets/demo.mp4`](./assets/demo.mp4)。GitHub 网页若无法内嵌播放，请使用上方 raw 链接或下载文件观看。
+
 ## 核心能力
 
 | 能力 | 说明 |
 |------|------|
 | **RAG 问答** | 基于 Supabase pgvector 检索财报/宏观资料，流式生成研究结论 |
-| **思考过程** | 流式展示「检索命中 → 证据摘要」后再输出正文 |
+| **思考过程** | 分步状态 + 逐行流式展示检索策略、命中文档摘录与分析规划，再输出正文 |
 | **引用溯源** | 回答底部标注 ticker、来源文档、相似度分数 |
 | **资料库管理** | 从 `corpus.json` 同步至向量索引，支持清空后全量重导 |
 | **智能推荐问** | 根据资料库覆盖标的生成快捷提问（会话级缓存，可手动刷新） |
@@ -57,6 +67,8 @@ flowchart TB
 ## 项目结构
 
 ```
+├── assets/
+│   └── demo.mp4              # 产品演示录屏
 ├── app/                      # Next.js App Router 主页面
 ├── components/
 │   ├── chat/                 # ChatInput、ChatMessage、Markdown
@@ -86,8 +98,8 @@ flowchart TB
 | 区域 | 说明 |
 |------|------|
 | **侧边栏** | 新建研究、同步资料库（含结果提示）、会话历史、资料库状态（条数 / 标的 / 披露截至日） |
-| **主面板** | 分析师提问 + Finsight 智能体回复，可折叠「思考过程」 |
-| **回答区** | Markdown 渲染、引用来源标签、点赞/点踩反馈 |
+| **主面板** | 分析师提问 + Finsight 智能体回复；思考时自动展开「思考过程」并显示当前步骤 |
+| **回答区** | Markdown 渲染、引用来源（含摘录与元数据）、重新生成 / 复制 / 朗读、点赞/点踩 |
 | **输入区** | 推荐快捷问题、刷新按钮、流式发送 / **停止生成** |
 | **状态栏** | 就绪 / 思考中 / 生成回答 / 同步资料库 等 |
 
@@ -229,17 +241,19 @@ npm run dev
 ### SSE 事件格式
 
 ```text
-data: {"type": "thinking", "content": "**知识库检索：** ..."}
+data: {"type": "thinking_step", "label": "检索资料库（向量相似度）…"}
+data: {"type": "thinking", "content": "## 问题理解\n"}
 data: {"type": "token", "content": "部分正文"}
-data: {"type": "done", "sources": [{"ticker": "AAPL", "source": "10-K FY2025", "score": 0.82}]}
+data: {"type": "done", "sources": [{"ticker": "AAPL", "source": "10-K FY2025", "score": 0.82, "excerpt": "..."}]}
 data: {"type": "error", "message": "..."}
 ```
 
 | `type` | 含义 |
 |--------|------|
-| `thinking` | 思考过程增量（检索摘要） |
+| `thinking_step` | 思考阶段状态文案（如理解问题、检索、逐条核对） |
+| `thinking` | 思考过程 Markdown 增量（按行推送） |
 | `token` | 正式回答正文增量 |
-| `done` | 流结束，附带 `sources` |
+| `done` | 流结束，附带完整 `sources`（含摘录、披露元数据） |
 | `error` | 错误信息 |
 
 ## 常见问题
