@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from agent import FinancialResearchAgent
+from app_launcher import handle_launch_request, list_installed_apps
 from corpus import get_library_documents
 from config import get_settings
 from database import create_supabase_client, ensure_vector_store_ready
@@ -88,9 +89,37 @@ class SuggestionsRequest(BaseModel):
     )
 
 
+class LaunchAppRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=200)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "finsight-api"}
+
+
+@app.get("/api/apps/installed")
+async def installed_apps():
+    try:
+        installed = await asyncio.to_thread(list_installed_apps)
+        return {
+            "apps": [
+                {"id": app.id, "name": app.name, "path": path}
+                for app, path in installed
+            ]
+        }
+    except Exception as exc:
+        logger.exception("Installed apps error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/launch-app")
+async def launch_app(request: LaunchAppRequest):
+    try:
+        return await asyncio.to_thread(handle_launch_request, request.query.strip())
+    except Exception as exc:
+        logger.exception("Launch app error")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/api/chat")

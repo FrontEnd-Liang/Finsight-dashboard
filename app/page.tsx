@@ -30,6 +30,7 @@ import {
   saveSessions,
   titleFromQuery,
 } from "@/lib/sessions";
+import { isLaunchIntent, launchFinancialApp } from "@/lib/launch-app";
 import { useToast } from "@/lib/use-toast";
 
 export default function HomePage() {
@@ -252,6 +253,47 @@ export default function HomePage() {
       role: "user",
       content: query,
     };
+
+    if (isLaunchIntent(query)) {
+      const assistantId = `msg_${Date.now()}_assistant`;
+      setMessages((prev) => [
+        ...prev,
+        userMessage,
+        {
+          id: assistantId,
+          role: "assistant",
+          content: "正在检测本机金融软件…",
+          thinking: "",
+          isStreaming: false,
+          isThinking: false,
+        },
+      ]);
+      updateSessionTitle(activeSessionId, query);
+
+      try {
+        const result = await launchFinancialApp(query);
+        const message =
+          result.message ??
+          (result.launched ? "已启动金融软件。" : "未能启动金融软件。");
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: message } : m
+          )
+        );
+        notify(message, result.launched ? "success" : "error");
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "启动金融软件失败，请检查后端服务";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: message } : m
+          )
+        );
+        notify(message, "error");
+      }
+      return;
+    }
 
     const assistantId = `msg_${Date.now()}_assistant`;
     const assistantMessage: Message = {

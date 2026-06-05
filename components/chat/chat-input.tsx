@@ -211,7 +211,7 @@ export function ChatInput({
         </Button>
       </div>
       <p className="mt-2 text-center font-mono text-[10px] text-muted-foreground/60">
-        SSE 流式 · Supabase 向量检索 · DeepSeek
+        SSE 流式 · Supabase 向量检索 · DeepSeek · 输入「打开同花顺」等可启动本机金融软件
       </p>
     </div>
   );
