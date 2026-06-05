@@ -446,10 +446,111 @@ def launch_executable(path: str) -> None:
     subprocess.Popen([path], start_new_session=True)
 
 
-def handle_launch_request(query: str) -> dict:
-    verb, target = parse_launch_intent(query)
-    if not verb or not target:
-        return {"matched": False}
+def copy_to_clipboard(text: str) -> bool:
+    try:
+        if sys.platform == "win32":
+            process = subprocess.Popen(
+                ["clip"],
+                stdin=subprocess.PIPE,
+                shell=True,
+            )
+            process.communicate(input=text.encode("utf-16le"), timeout=5)
+            return process.returncode == 0
+        if sys.platform == "darwin":
+            subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True, timeout=5)
+            return True
+        subprocess.run(
+            ["xclip", "-selection", "clipboard"],
+            input=text.encode("utf-8"),
+            check=True,
+            timeout=5,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _mask_phone(phone: str) -> str:
+    if len(phone) < 7:
+        return phone
+    return f"{phone[:3]}****{phone[-4:]}"
+
+
+def _run_post_launch_automation(intent, app) -> tuple[list[str], dict | None]:
+    if app.id != "eastmoney":
+        return [], None
+    if not (intent.login or intent.phone or intent.navigate_to):
+        return [], None
+
+    from app_automation import run_eastmoney_automation
+
+    result = run_eastmoney_automation(
+        phone=intent.phone,
+        login_method=intent.login_method,
+        navigate_to=intent.navigate_to,
+        wants_login=intent.login,
+        copy_phone=copy_to_clipboard,
+    )
+    meta = {
+        "automation_success": result.success,
+        "automation_awaiting_user": result.awaiting_user,
+        "navigate_to": intent.navigate_to,
+    }
+    if result.message:
+        return [result.message], meta
+    return [], meta
+
+
+def _build_login_assist_message(
+    app_name: str,
+    phone: str,
+    login_method: str,
+    clipboard_ok: bool,
+) -> str:
+    masked = _mask_phone(phone)
+    lines = [f"已识别登录意图：{app_name} · 手机号 {masked}"]
+
+    if login_method == "sms":
+        lines.append("登录方式：手机验证码")
+    elif login_method == "password":
+        lines.append("登录方式：密码登录")
+    else:
+        lines.append("登录方式：未明确（默认按验证码登录处理）")
+
+    if clipboard_ok:
+        lines.append(f"已将手机号 {masked} 复制到剪贴板，可在软件登录页直接 Ctrl+V 粘贴。")
+    else:
+        lines.append(f"请手动输入手机号：{phone}")
+
+    lines.append("验证码需您本人在手机和软件中完成，系统无法代填或代点「获取验证码」。")
+    return "\n".join(lines)
+
+
+def _execute_app_command(intent) -> dict:
+    from app_intent import AppCommandIntent
+
+    assert isinstance(intent, AppCommandIntent)
+
+    installed = list_installed_apps()
+    installed_names = [item[0].name for item in installed]
+
+    if not intent.launch and intent.login:
+        if not intent.phone:
+            return {
+                "matched": True,
+                "launched": False,
+                "message": "已识别登录意图，但未找到有效手机号。请使用类似：登录东方财富，手机号 13800138000。",
+                "installed_apps": installed_names,
+            }
+        if not intent.app_target:
+            return {
+                "matched": True,
+                "launched": False,
+                "message": "已识别登录意图，但未识别目标软件。请指明软件，例如：登录东方财富。",
+                "installed_apps": installed_names,
+            }
+
+    target = intent.app_target or "金融软件"
 
     if _is_generic_target(target):
         installed = list_installed_apps()
@@ -479,13 +580,38 @@ def handle_launch_request(query: str) -> dict:
 
         others = [item[0].name for item in installed[1:]]
         extra = f"本机还安装了：{'、'.join(others)}。" if others else ""
+        message = f"已为您启动 {app.name}。{extra}".strip()
+        login_steps: list[str] = []
+        clipboard_ok = False
+        automation_meta: dict | None = None
+        if intent.login and intent.phone and app.id != "eastmoney":
+            clipboard_ok = copy_to_clipboard(intent.phone)
+            login_steps.append(
+                _build_login_assist_message(
+                    app.name,
+                    intent.phone,
+                    intent.login_method,
+                    clipboard_ok,
+                )
+            )
+        auto_steps, automation_meta = _run_post_launch_automation(intent, app)
+        login_steps.extend(auto_steps)
         return {
             "matched": True,
             "launched": True,
             "app_id": app.id,
             "app_name": app.name,
-            "message": f"已为您启动 {app.name}。{extra}".strip(),
-            "installed_apps": [item[0].name for item in installed],
+            "message": "\n\n".join([message, *login_steps]).strip(),
+            "installed_apps": installed_names,
+            "intent": {
+                "launch": intent.launch,
+                "login": intent.login,
+                "phone_masked": _mask_phone(intent.phone) if intent.phone else None,
+                "login_method": intent.login_method,
+                "clipboard_ready": clipboard_ok,
+                "navigate_to": intent.navigate_to,
+                **(automation_meta or {}),
+            },
         }
 
     app = _resolve_app(target)
@@ -521,14 +647,50 @@ def handle_launch_request(query: str) -> dict:
             "app_id": app.id,
             "app_name": app.name,
             "message": f"已找到 {app.name}，但启动失败：{exc}",
-            "installed_apps": [item[0].name for item in list_installed_apps()],
+            "installed_apps": installed_names,
         }
+
+    message = f"已为您启动 {app.name}。"
+    login_steps: list[str] = []
+    clipboard_ok = False
+    automation_meta: dict | None = None
+    if intent.login and intent.phone and app.id != "eastmoney":
+        clipboard_ok = copy_to_clipboard(intent.phone)
+        login_steps.append(
+            _build_login_assist_message(
+                app.name,
+                intent.phone,
+                intent.login_method,
+                clipboard_ok,
+            )
+        )
+    auto_steps, automation_meta = _run_post_launch_automation(intent, app)
+    login_steps.extend(auto_steps)
 
     return {
         "matched": True,
         "launched": True,
         "app_id": app.id,
         "app_name": app.name,
-        "message": f"已为您启动 {app.name}。",
-        "installed_apps": [item[0].name for item in list_installed_apps()],
+        "message": "\n\n".join([message, *login_steps]).strip(),
+        "installed_apps": installed_names,
+        "intent": {
+            "launch": intent.launch,
+            "login": intent.login,
+            "phone_masked": _mask_phone(intent.phone) if intent.phone else None,
+            "login_method": intent.login_method,
+            "clipboard_ready": clipboard_ok,
+            "navigate_to": intent.navigate_to,
+            **(automation_meta or {}),
+        },
     }
+
+
+def handle_launch_request(query: str) -> dict:
+    from app_intent import parse_app_command
+
+    intent = parse_app_command(query)
+    if not intent.matched:
+        return {"matched": False}
+
+    return _execute_app_command(intent)
