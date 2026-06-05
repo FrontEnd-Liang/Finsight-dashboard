@@ -91,6 +91,7 @@ class SuggestionsRequest(BaseModel):
 
 class LaunchAppRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=200)
+    session_id: str = Field(default="default", max_length=128)
 
 
 @app.get("/health")
@@ -116,7 +117,11 @@ async def installed_apps():
 @app.post("/api/launch-app")
 async def launch_app(request: LaunchAppRequest):
     try:
-        return await asyncio.to_thread(handle_launch_request, request.query.strip())
+        return await asyncio.to_thread(
+            handle_launch_request,
+            request.query.strip(),
+            request.session_id,
+        )
     except Exception as exc:
         logger.exception("Launch app error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc

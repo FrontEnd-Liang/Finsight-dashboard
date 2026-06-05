@@ -30,7 +30,7 @@ import {
   saveSessions,
   titleFromQuery,
 } from "@/lib/sessions";
-import { isLaunchIntent, launchFinancialApp } from "@/lib/launch-app";
+import { isAppCommandIntent, launchFinancialApp } from "@/lib/launch-app";
 import { useToast } from "@/lib/use-toast";
 
 export default function HomePage() {
@@ -254,7 +254,7 @@ export default function HomePage() {
       content: query,
     };
 
-    if (isLaunchIntent(query)) {
+    if (isAppCommandIntent(query)) {
       const assistantId = `msg_${Date.now()}_assistant`;
       setMessages((prev) => [
         ...prev,
@@ -262,7 +262,7 @@ export default function HomePage() {
         {
           id: assistantId,
           role: "assistant",
-          content: "正在检测本机金融软件…",
+          content: "正在执行本机软件操作…",
           thinking: "",
           isStreaming: false,
           isThinking: false,
@@ -271,17 +271,22 @@ export default function HomePage() {
       updateSessionTitle(activeSessionId, query);
 
       try {
-        const result = await launchFinancialApp(query);
+        const result = await launchFinancialApp(query, activeSessionId);
         const message =
           result.message ??
-          (result.launched ? "已启动金融软件。" : "未能启动金融软件。");
+          (result.launched || result.navigated
+            ? "软件操作已完成。"
+            : "未能完成软件操作。");
 
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId ? { ...m, content: message } : m
           )
         );
-        notify(message, result.launched ? "success" : "error");
+        notify(
+          message,
+          result.launched || result.navigated ? "success" : "error"
+        );
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "启动金融软件失败，请检查后端服务";

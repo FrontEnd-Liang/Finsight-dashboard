@@ -23,6 +23,28 @@ class FinancialApp:
     common_paths: tuple[str, ...]
 
 
+_session_last_app: dict[str, str] = {}
+
+
+def remember_session_app(session_id: str, app_id: str) -> None:
+    if session_id and app_id:
+        _session_last_app[session_id] = app_id
+
+
+def resolve_app_for_session(app_target: str | None, session_id: str) -> FinancialApp | None:
+    if app_target:
+        resolved = _resolve_app(app_target)
+        if resolved:
+            return resolved
+    app_id = _session_last_app.get(session_id)
+    if not app_id:
+        return None
+    for app in FINANCIAL_APPS:
+        if app.id == app_id:
+            return app
+    return None
+
+
 FINANCIAL_APPS: tuple[FinancialApp, ...] = (
     FinancialApp(
         id="ths",
@@ -476,6 +498,34 @@ def _mask_phone(phone: str) -> str:
     return f"{phone[:3]}****{phone[-4:]}"
 
 
+def _focus_launched_app(app) -> tuple[str | None, bool]:
+    if sys.platform != "win32":
+        return None, False
+    try:
+        from app_automation import bring_app_window_to_front
+
+        ok, message = bring_app_window_to_front(app.id, timeout=12.0)
+        return message if message else None, ok
+    except Exception:
+        return None, False
+
+
+def _collect_post_launch_steps(intent, app) -> tuple[list[str], dict]:
+    steps: list[str] = []
+    meta: dict = {}
+
+    focus_msg, focus_ok = _focus_launched_app(app)
+    if focus_msg:
+        steps.append(focus_msg)
+    meta["window_focused"] = focus_ok
+
+    auto_steps, automation_meta = _run_post_launch_automation(intent, app)
+    steps.extend(auto_steps)
+    if automation_meta:
+        meta.update(automation_meta)
+    return steps, meta
+
+
 def _run_post_launch_automation(intent, app) -> tuple[list[str], dict | None]:
     if app.id != "eastmoney":
         return [], None
@@ -526,13 +576,57 @@ def _build_login_assist_message(
     return "\n".join(lines)
 
 
-def _execute_app_command(intent) -> dict:
+def _execute_navigate_only(intent, session_id: str) -> dict:
+    installed_names = [item[0].name for item in list_installed_apps()]
+    app = resolve_app_for_session(intent.app_target, session_id)
+    if app is None:
+        return {
+            "matched": True,
+            "launched": False,
+            "navigated": False,
+            "message": (
+                "已识别页面切换指令，但不知道要操作哪个软件。"
+                "请先在本会话中说「打开东方财富」等启动指令，再发送「切换到自选」。"
+            ),
+            "installed_apps": installed_names,
+        }
+
+    remember_session_app(session_id, app.id)
+    post_steps, post_meta = _collect_post_launch_steps(intent, app)
+    target_label = intent.navigate_to or "目标页面"
+    header = f"正在 {app.name} 中切换到「{target_label}」…"
+    message = "\n\n".join([header, *post_steps]).strip() if post_steps else header
+
+    return {
+        "matched": True,
+        "launched": False,
+        "navigated": bool(post_meta.get("automation_success", True)),
+        "app_id": app.id,
+        "app_name": app.name,
+        "message": message,
+        "installed_apps": installed_names,
+        "intent": {
+            "launch": False,
+            "login": intent.login,
+            "phone_masked": _mask_phone(intent.phone) if intent.phone else None,
+            "login_method": intent.login_method,
+            "navigate_to": intent.navigate_to,
+            "used_session_context": intent.app_target is None,
+            **post_meta,
+        },
+    }
+
+
+def _execute_app_command(intent, session_id: str = "default") -> dict:
     from app_intent import AppCommandIntent
 
     assert isinstance(intent, AppCommandIntent)
 
     installed = list_installed_apps()
     installed_names = [item[0].name for item in installed]
+
+    if not intent.launch and intent.navigate_to:
+        return _execute_navigate_only(intent, session_id)
 
     if not intent.launch and intent.login:
         if not intent.phone:
@@ -583,7 +677,6 @@ def _execute_app_command(intent) -> dict:
         message = f"已为您启动 {app.name}。{extra}".strip()
         login_steps: list[str] = []
         clipboard_ok = False
-        automation_meta: dict | None = None
         if intent.login and intent.phone and app.id != "eastmoney":
             clipboard_ok = copy_to_clipboard(intent.phone)
             login_steps.append(
@@ -594,8 +687,9 @@ def _execute_app_command(intent) -> dict:
                     clipboard_ok,
                 )
             )
-        auto_steps, automation_meta = _run_post_launch_automation(intent, app)
-        login_steps.extend(auto_steps)
+        post_steps, post_meta = _collect_post_launch_steps(intent, app)
+        login_steps.extend(post_steps)
+        remember_session_app(session_id, app.id)
         return {
             "matched": True,
             "launched": True,
@@ -610,7 +704,7 @@ def _execute_app_command(intent) -> dict:
                 "login_method": intent.login_method,
                 "clipboard_ready": clipboard_ok,
                 "navigate_to": intent.navigate_to,
-                **(automation_meta or {}),
+                **post_meta,
             },
         }
 
@@ -653,7 +747,6 @@ def _execute_app_command(intent) -> dict:
     message = f"已为您启动 {app.name}。"
     login_steps: list[str] = []
     clipboard_ok = False
-    automation_meta: dict | None = None
     if intent.login and intent.phone and app.id != "eastmoney":
         clipboard_ok = copy_to_clipboard(intent.phone)
         login_steps.append(
@@ -664,8 +757,9 @@ def _execute_app_command(intent) -> dict:
                 clipboard_ok,
             )
         )
-    auto_steps, automation_meta = _run_post_launch_automation(intent, app)
-    login_steps.extend(auto_steps)
+    post_steps, post_meta = _collect_post_launch_steps(intent, app)
+    login_steps.extend(post_steps)
+    remember_session_app(session_id, app.id)
 
     return {
         "matched": True,
@@ -681,16 +775,16 @@ def _execute_app_command(intent) -> dict:
             "login_method": intent.login_method,
             "clipboard_ready": clipboard_ok,
             "navigate_to": intent.navigate_to,
-            **(automation_meta or {}),
+            **post_meta,
         },
     }
 
 
-def handle_launch_request(query: str) -> dict:
+def handle_launch_request(query: str, session_id: str = "default") -> dict:
     from app_intent import parse_app_command
 
     intent = parse_app_command(query)
     if not intent.matched:
         return {"matched": False}
 
-    return _execute_app_command(intent)
+    return _execute_app_command(intent, session_id=session_id)

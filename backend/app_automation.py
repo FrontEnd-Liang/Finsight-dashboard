@@ -22,9 +22,8 @@ NAVIGATION_SHORTCUTS: dict[str, str] = {
     "行情": "{F2}",
 }
 
-# 经典版左侧导航顺序（自上而下）；UI 为自绘控件，无法直接读文字，只能按序号定位
+# 经典版左侧导航顺序（自上而下，与客户端侧栏一致）
 EASTMONEY_SIDEBAR_MENU: tuple[str, ...] = (
-    "全景图",
     "全景",
     "自选",
     "沪深京",
@@ -32,14 +31,30 @@ EASTMONEY_SIDEBAR_MENU: tuple[str, ...] = (
     "大盘",
     "资讯",
     "数据",
+    "新股",
 )
 
-# 相对窗口宽高的比例定位，适配不同分辨率 / 缩放（实测 1920×1080 校准）
-EASTMONEY_SIDEBAR_X_RATIO = 0.009
-EASTMONEY_SIDEBAR_START_Y_RATIO = 0.057
-EASTMONEY_SIDEBAR_ITEM_HEIGHT_RATIO = 0.0193
+# 相对窗口宽高的比例定位，适配不同分辨率 / 缩放
+EASTMONEY_SIDEBAR_X_RATIO = 0.012
+EASTMONEY_SIDEBAR_START_Y_RATIO = 0.082
+EASTMONEY_SIDEBAR_ITEM_HEIGHT_RATIO = 0.036
 
-EASTMONEY_WINDOW_RE = r".*(东方财富|财富终端).*"
+# 这些目标优先走快捷键（比侧栏坐标点击更稳）
+SHORTCUT_FIRST_TARGETS: frozenset[str] = frozenset(
+    {"自选股", "上证指数", "深证成指", "行情"}
+)
+
+EASTMONEY_WINDOW_RE = r".*(东方财富|财富终端|经典版).*"
+
+APP_WINDOW_PATTERNS: dict[str, str] = {
+    "eastmoney": EASTMONEY_WINDOW_RE,
+    "ths": r".*(同花顺|Hexin|hexin).*",
+    "wind": r".*(Wind|万得).*",
+    "tdx": r".*(通达信|TdxW|tdxw).*",
+    "choice": r".*Choice.*",
+    "dzh": r".*(大智慧|dzh).*",
+}
+
 LOGIN_BUTTONS = {
     "sms": "ButtonLogonSMS",
     "password": "ButtonLogonNormal",
@@ -82,26 +97,87 @@ def _require_pywinauto():
         raise RuntimeError("缺少 pywinauto，请先安装：pip install pywinauto") from exc
 
 
-def _wait_for_eastmoney_window(timeout: float = 30.0):
+def _force_hwnd_foreground(hwnd: int) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        SW_RESTORE = 9
+        ASFW_ANY = -1
+        VK_MENU = 0x12
+        KEYEVENTF_KEYUP = 0x0002
+
+        if user32.IsIconic(hwnd):
+            user32.ShowWindow(hwnd, SW_RESTORE)
+        user32.AllowSetForegroundWindow(ASFW_ANY)
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.SetForegroundWindow(hwnd)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+        user32.BringWindowToTop(hwnd)
+    except Exception:
+        pass
+
+
+def _focus_window(window) -> bool:
+    try:
+        if hasattr(window, "is_minimized") and window.is_minimized():
+            window.restore()
+        elif hasattr(window, "was_maximized"):
+            try:
+                if window.get_show_state() == 2:  # SW_SHOWMINIMIZED
+                    window.restore()
+            except Exception:
+                pass
+        _force_hwnd_foreground(int(window.handle))
+        window.set_focus()
+        return True
+    except Exception:
+        return False
+
+
+def _wait_for_app_window(title_re: str, timeout: float = 20.0):
     Application, findwindows, _send_keys = _require_pywinauto()
     deadline = time.time() + timeout
     last_error: Exception | None = None
 
     while time.time() < deadline:
         try:
-            handles = findwindows.find_windows(title_re=EASTMONEY_WINDOW_RE)
-            for handle in handles:
+            handles = findwindows.find_windows(title_re=title_re)
+            for handle in reversed(handles):
                 app = Application(backend="uia").connect(handle=handle)
                 window = app.window(handle=handle)
                 if window.exists(timeout=0.5):
                     return app, window
         except Exception as exc:
             last_error = exc
-        time.sleep(0.8)
+        time.sleep(0.6)
 
     if last_error:
-        raise TimeoutError(f"等待东方财富窗口超时：{last_error}")
-    raise TimeoutError("等待东方财富窗口超时")
+        raise TimeoutError(f"等待应用窗口超时：{last_error}")
+    raise TimeoutError("等待应用窗口超时")
+
+
+def bring_app_window_to_front(app_id: str, timeout: float = 15.0) -> tuple[bool, str]:
+    if sys.platform != "win32":
+        return False, "当前系统暂不支持窗口置顶。"
+
+    title_re = APP_WINDOW_PATTERNS.get(app_id)
+    if not title_re:
+        return False, "未配置该应用的窗口匹配规则。"
+
+    try:
+        _app, window = _wait_for_app_window(title_re, timeout=timeout)
+        if _focus_window(window):
+            return True, "已将应用窗口置于最前。"
+        return False, "已找到应用窗口，但置顶失败。"
+    except Exception as exc:
+        return False, f"未能将应用窗口置顶：{exc}"
+
+
+def _wait_for_eastmoney_window(timeout: float = 30.0):
+    return _wait_for_app_window(EASTMONEY_WINDOW_RE, timeout=timeout)
 
 
 def _click_if_exists(window, title: str, control_type: str = "Button", timeout: float = 1.5) -> bool:
@@ -240,8 +316,24 @@ def _find_and_click_text(window, text: str) -> bool:
     return False
 
 
-def _navigate_eastmoney(window, target: str) -> list[str]:
+def _send_shortcut(window, target: str, shortcut: str) -> list[str]:
     _, _, send_keys = _require_pywinauto()
+    window.set_focus()
+    time.sleep(0.35)
+    send_keys(shortcut, pause=0.1)
+    time.sleep(0.6)
+    key = shortcut.strip("{}")
+    if target == "自选股":
+        return [f"已发送快捷键 {key}，切换到自选股页面。"]
+    if target in {"上证指数", "深证成指"}:
+        return [f"已发送快捷键 {key}，进入{target}分时图。"]
+    return [f"已发送快捷键 {key}，切换到「{target}」。"]
+
+
+def _navigate_eastmoney(window, target: str) -> list[str]:
+    shortcut = NAVIGATION_SHORTCUTS.get(target)
+    if shortcut and target in SHORTCUT_FIRST_TARGETS:
+        return _send_shortcut(window, target, shortcut)
 
     if target == "大盘":
         if _find_and_click_text(window, "大盘"):
@@ -251,22 +343,17 @@ def _navigate_eastmoney(window, target: str) -> list[str]:
         return ["未能定位「大盘」导航入口，请手动点击左侧「大盘」。"]
 
     if _sidebar_item_index(target) is not None:
-        if _find_and_click_text(window, target) or _click_sidebar_item(window, target):
-            return [f"已切换到左侧导航「{target}」页面。"]
-        return [f"未能定位「{target}」导航入口，请手动切换。"]
+        label = "自选" if target == "自选股" else target
+        if _find_and_click_text(window, label) or _click_sidebar_item(window, label):
+            return [f"已点击左侧导航「{label}」。"]
+        if shortcut:
+            return _send_shortcut(window, target, shortcut)
+        return [f"未能定位「{label}」导航入口，请手动切换。"]
 
-    shortcut = NAVIGATION_SHORTCUTS.get(target)
     if not shortcut:
         return [f"暂不支持自动切换到「{target}」。"]
 
-    window.set_focus()
-    time.sleep(0.3)
-    send_keys(shortcut, pause=0.1)
-    hint = "指数分时图" if target in {"上证指数", "深证成指"} else "对应页面"
-    return [
-        f"已发送快捷键切换到「{target}」（{shortcut.strip('{}')}），进入{hint}。"
-        "如需左侧「大盘」指数列表，请直接说「切换到大盘」。"
-    ]
+    return _send_shortcut(window, target, shortcut)
 
 
 def run_eastmoney_automation(
@@ -291,7 +378,8 @@ def run_eastmoney_automation(
     try:
         _app, window = _wait_for_eastmoney_window(timeout=window_timeout)
         steps.append("已连接到东方财富窗口。")
-        window.set_focus()
+        if _focus_window(window):
+            steps.append("已将东方财富窗口置于浏览器上方。")
 
         if wants_login or phone or _login_dialog_visible(window):
             login_steps, awaiting_user = _assist_eastmoney_login(

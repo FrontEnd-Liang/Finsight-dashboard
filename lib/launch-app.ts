@@ -19,6 +19,7 @@ const APP_KEYWORDS = [
 export interface LaunchAppResult {
   matched: boolean;
   launched?: boolean;
+  navigated?: boolean;
   app_id?: string;
   app_name?: string;
   message?: string;
@@ -29,15 +30,29 @@ export interface LaunchAppResult {
     phone_masked?: string | null;
     login_method?: string;
     clipboard_ready?: boolean;
+    navigate_to?: string | null;
+    used_session_context?: boolean;
   };
 }
 
-export function isLaunchIntent(query: string): boolean {
+const NAVIGATE_TARGETS =
+  "大盘|行情|自选|自选股|上证|深证|上证指数|深证成指|全景|沪深京|板块";
+
+export function isAppCommandIntent(query: string): boolean {
   const text = query.trim();
   if (!text) return false;
 
   const verbPattern = LAUNCH_VERBS.join("|");
   if (new RegExp(`^(${verbPattern})\\s*.+`, "i").test(text)) {
+    return true;
+  }
+
+  if (
+    new RegExp(
+      `^(切换到|切到|进入|打开|查看|跳转(?:到)?)\\s*(${NAVIGATE_TARGETS})`,
+      "i"
+    ).test(text)
+  ) {
     return true;
   }
 
@@ -50,17 +65,24 @@ export function isLaunchIntent(query: string): boolean {
     return true;
   }
 
-  const hasNavigate = /(切换到|切到|进入|打开|查看).*(大盘|行情|自选|上证|深证)/.test(
-    text
-  );
+  const hasNavigate = new RegExp(
+    `(切换到|切到|进入|打开|查看).*(大盘|行情|自选|上证|深证)`,
+    "i"
+  ).test(text);
   return hasApp && hasNavigate;
 }
 
-export async function launchFinancialApp(query: string): Promise<LaunchAppResult> {
+/** @deprecated use isAppCommandIntent */
+export const isLaunchIntent = isAppCommandIntent;
+
+export async function launchFinancialApp(
+  query: string,
+  sessionId = "default"
+): Promise<LaunchAppResult> {
   const response = await fetch(`${API_BASE}/api/launch-app`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, session_id: sessionId }),
   });
   if (!response.ok) {
     const text = await response.text();

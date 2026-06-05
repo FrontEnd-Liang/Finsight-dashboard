@@ -151,10 +151,10 @@ def parse_app_command(query: str) -> AppCommandIntent:
                 phone=phone,
                 login_method=login_method,
             )
-        if navigate_to and app_target:
+        if navigate_to:
             return _build_intent(
                 query=query,
-                launch=True,
+                launch=launch or bool(app_target),
                 login=login,
                 app_target=app_target,
                 phone=phone,
